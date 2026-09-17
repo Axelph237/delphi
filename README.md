@@ -27,7 +27,7 @@ natural language
 
 ### HRSE Tree (`compiler/hrse.py`)
 
-A **Hierarchical Reed-Solomon Encoding (HRSE) tree** is the structural blueprint for the oracle. Each node represents a module that uses a fixed number of ancilla qubits (`size`). Child nodes are strictly smaller, enabling qubit reuse across levels.
+A **Hierarchical Recursive Synthesis-Evaluation (HRSE) tree** is the structural blueprint for the oracle. Each node represents a module that uses a fixed number of ancilla qubits (`size`). Child nodes are strictly smaller, enabling qubit reuse across levels.
 
 Trees are synthesized by the **ASDT algorithm** (`asdt`), which produces an optimal tree for `m` clauses within a budget of `k` ancilla qubits. The maximum clause capacity for a given `k` is `ceil(3 × 2^(k−4))`.
 
@@ -39,7 +39,7 @@ root = HRSENode.new(m=10, k=6)  # tree for 10 clauses, 6 ancilla qubits
 
 ### CST (`compiler/cst.py`)
 
-A **Compute Structure Tree (CST)** mirrors the HRSE tree and assigns a *partition* of clause batches to each node. Batches are built greedily by the **SeedGrow heuristic**:
+A **Clustered Synthesis Tree (CST)** mirrors the HRSE tree and assigns a *partition* of clause batches to each node. Batches are built greedily by the **SeedGrow heuristic**:
 
 - **`grow_cst(root, clauses)`** — the top-level entrypoint. Traverses the HRSE tree top-down and assigns clauses to nodes so that higher nodes (more qubits) handle the most-conflicted clauses first.
 - **`seed_grow(node, remaining, omap)`** — fills one CST node by repeatedly calling `grow_block`.
@@ -93,5 +93,5 @@ cst = grow_cst(root, clauses)
 
 ## References
 
-- [Ancilla-Efficient Quantum Oracle Synthesis via Hierarchical Reed-Solomon Encoding (2025)](https://arxiv.org/html/2605.21380v1)
-- [Supplementary paper on CST construction (2025)](https://arxiv.org/pdf/2607.11401)
+- [Modeling and Resource Optimization for Quantum Oracles (2026)](https://arxiv.org/html/2605.21380v1)
+- [From Leaves to Clusters: Depth-Efficient SAT-Oracle Synthesis Based on the HRSE Model (2026)](https://arxiv.org/pdf/2607.11401)
