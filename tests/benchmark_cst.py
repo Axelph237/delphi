@@ -11,10 +11,11 @@ import time
 import random
 
 from compiler.cst import (
-    Clause, Batch, NumpyContext,
+    Clause, Batch,
     build_occurence_list, sort_clauses, grow_block, merge_adjacent,
-    grow_cst, _build_numpy_context,
+    grow_cst,
 )
+from compiler.numpy_context import NumpyContext, build_numpy_context
 from compiler.hrse import HRSENode
 
 
@@ -57,7 +58,7 @@ def ratio(py: float, np_: float) -> str:
 def bench_sort_clauses(n_vars: int, n_clauses: int, width: int):
     clauses = make_cnf(n_vars, n_clauses, width)
     omap = build_occurence_list(clauses)
-    ctx = _build_numpy_context(clauses)  # pre-built; passed to fast path
+    ctx = build_numpy_context(clauses)  # pre-built; passed to fast path
 
     def py_sort():
         c = clauses[:]
@@ -81,7 +82,7 @@ def bench_sort_clauses(n_vars: int, n_clauses: int, width: int):
 def bench_grow_block(n_vars: int, n_clauses: int, width: int, budget: int = 50):
     clauses = make_cnf(n_vars, n_clauses, width)
     omap = build_occurence_list(clauses)
-    ctx = _build_numpy_context(clauses)
+    ctx = build_numpy_context(clauses)
 
     def py_run():
         c = clauses[:]
@@ -102,7 +103,7 @@ def bench_grow_block(n_vars: int, n_clauses: int, width: int, budget: int = 50):
 def bench_merge_adjacent(n_vars: int, n_clauses: int, width: int, budget: int = 200):
     clauses = make_cnf(n_vars, n_clauses, width)
     omap = build_occurence_list(clauses)
-    ctx = _build_numpy_context(clauses)
+    ctx = build_numpy_context(clauses)
 
     partition: list[Batch] = []
     remaining = clauses[:]
@@ -137,7 +138,7 @@ def bench_grow_cst(m: int, k: int, n_vars: int, width: int, n_reps: int = 3):
 
 if __name__ == "__main__":
     print("=" * 74)
-    print("sort_clauses  (fast path uses pre-built padded matrix from _build_numpy_context)")
+    print("sort_clauses  (fast path uses pre-built padded matrix from build_numpy_context)")
     print("=" * 74)
     bench_sort_clauses(n_vars=100,  n_clauses=500,   width=5)
     bench_sort_clauses(n_vars=200,  n_clauses=2000,  width=10)

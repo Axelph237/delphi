@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from .bucket_queue import BucketQueue
+from .numpy_context import NumpyContext, build_numpy_context
 
 import numpy as np
-from typing import NamedTuple
 from typing_extensions import Set, Iterable
 from collections.abc import Iterator
 from compiler.hrse import HRSENode
-from dataclasses import dataclass, field
-from itertools import count
+from dataclasses import dataclass
 
 
 # ---------- CST Objects ----------
@@ -114,74 +113,6 @@ class CSTNode:
                 max(len(c.variables) for c in batch._clauses)
             )
 
-# ---------- Numpy Context ----------
-
-class NumpyContext(NamedTuple):
-    """Pre-computed structures enabling vectorized operations across a clause set.
-
-    clause_masks uses Python arbitrary-precision integers as bitmasks (one bit per variable
-    at its remapped 0-based index). Bitwise AND + int.bit_count() replaces per-variable
-    Python loops for set-intersection counting, which is ~10–100x faster than dict lookups
-    for typical clause widths.
-
-    pad_idx / padded_freq / clause_lengths enable a single matrix gather+sum in sort_clauses
-    that computes all n conflict degrees simultaneously, avoiding n sequential Python key calls.
-    """
-    var_to_idx: dict[variable, int]        # original variable ID → 0-based index
-    idx_to_var: np.ndarray                 # idx_to_var[i] == original variable ID
-    n_vars: int                            # total unique variable count
-    freq_arr: np.ndarray                   # freq_arr[i] = clause count for variable i
-    clause_arrs: dict[Clause, np.ndarray]  # clause → index array
-    clause_masks: dict[Clause, int]        # clause → Python int bitmask (for grow_block)
-    # Sort-matrix fields (indexed by position in the clause list passed to _build_numpy_context)
-    pad_idx: np.ndarray                    # shape (n_clauses, max_width); padding sentinel = n_vars
-    padded_freq: np.ndarray                # freq_arr extended by one 0 for the sentinel
-    clause_lengths: np.ndarray             # shape (n_clauses,); dtype int64
-
-
-def _build_numpy_context(clauses: list[Clause]) -> NumpyContext | None:
-    r"""
-    Build numpy structures, bitmasks, and the sort padded-matrix for a clause set.
-    Returns None when the clause list is empty.
-    """
-    if not clauses:
-        return None
-
-    all_vars = sorted({v for c in clauses for v in c.variables})
-    var_to_idx: dict[variable, int] = {v: i for i, v in enumerate(all_vars)}
-    n = len(all_vars)
-    idx_to_var = np.array(all_vars, dtype=np.int64)
-    freq_arr = np.zeros(n, dtype=np.int64)
-    clause_arrs: dict[Clause, np.ndarray] = {}
-    clause_masks: dict[Clause, int] = {}
-
-    max_w = max(len(c.variables) for c in clauses)
-    m = len(clauses)
-    pad_idx = np.full((m, max_w), n, dtype=np.intp)   # sentinel = n (points to freq 0)
-    clause_lengths = np.empty(m, dtype=np.int64)
-
-    for i, c in enumerate(clauses):
-        arr = np.array([var_to_idx[v] for v in c.variables], dtype=np.intp)
-        clause_arrs[c] = arr
-        freq_arr[arr] += 1
-        mask = 0
-        for v in c.variables:
-            mask |= 1 << var_to_idx[v]
-        clause_masks[c] = mask
-        pad_idx[i, : len(arr)] = arr
-        clause_lengths[i] = len(arr)
-
-    padded_freq = np.empty(n + 1, dtype=np.int64)
-    padded_freq[:n] = freq_arr
-    padded_freq[n] = 0   # sentinel: padding columns contribute 0 to freq sums
-
-    return NumpyContext(
-        var_to_idx, idx_to_var, n, freq_arr,
-        clause_arrs, clause_masks,
-        pad_idx, padded_freq, clause_lengths,
-    )
-
-
 
 # ---------- Helper Functions ----------
 
@@ -251,7 +182,7 @@ def sort_clauses(clauses: list[Clause], omap: omap, ctx: NumpyContext | None = N
     2. Clause length $\boldsymbol{|\widehat{C_i}|}$
     3. Insertion order $\boldsymbol{i}$
 
-    When ctx is provided (pre-built by _build_numpy_context), uses a pre-computed padded index
+    When ctx is provided (pre-built by build_numpy_context), uses a pre-computed padded index
     matrix so all conflict degrees are gathered in one vectorized batch operation. Without ctx,
     falls back to a Python sort with per-clause dict lookups.
     """
@@ -314,7 +245,7 @@ def grow_cst(root: HRSENode, clauses: list[Clause]) -> CSTNode | None:
         return None
 
     var_occurences = build_occurence_list(clauses)
-    ctx = _build_numpy_context(clauses)   # build once; reused by sort and all seed_grow calls
+    ctx = build_numpy_context(clauses)   # build once; reused by sort and all seed_grow calls
     sort_clauses(clauses, var_occurences, ctx)
 
     remaining = list(clauses)
@@ -367,7 +298,7 @@ def seed_grow(
         return None
 
     # Use caller-provided ctx if available; otherwise build from the current remaining set.
-    node_ctx = ctx if ctx is not None else _build_numpy_context(remaining_clauses)
+    node_ctx = ctx if ctx is not None else build_numpy_context(remaining_clauses)
 
     partition: Partition = []
     budget = node.size - num_leaves
