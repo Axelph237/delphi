@@ -1,3 +1,7 @@
 ltc_paper.*
 pyrefly.toml
 **/__pycache__/*
+.git
+.claude
+.pytest_cache
+.venv
