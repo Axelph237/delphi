@@ -22,7 +22,7 @@ class HRSENode:
     covered_leaves: int | None  # l
     out_deg: int  # k
 
-    parent: HRSENode
+    parent: HRSENode | None
     children: list[HRSENode]
 
 

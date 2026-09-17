@@ -79,19 +79,18 @@ class Batch:
         return frozenset(self._clauses)
 
 
-@dataclass
-class CSTNode:
-    shadows: HRSENode   # The node in the HRSE tree that this CSTNode represents
-    parent: CSTNode | None
-
+class CSTNode(HRSENode):
     # CST node specific members
     max_clause_width: int   # $\boldsymbol{k = \text{max}_i|\widehat{C_i}|}$ is the max normalized clause width
     subsumed_variables: set[int]
     partition: Partition   # List of batches in evaluation order
 
-    def __init__(self, shadows: HRSENode, parent: CSTNode | None = None):
-        self.shadows = shadows
-        self.parent = parent
+    def __init__(self, hrse_node: HRSENode, parent: CSTNode | None = None):
+        super().__init__(hrse_node.size, hrse_node.depth, parent)
+        self.out_deg = hrse_node.out_deg
+        self.children = list(hrse_node.children)
+        self.complexity = hrse_node.complexity
+        self.covered_leaves = hrse_node.covered_leaves
 
         self.subsumed_variables = set()
         self.max_clause_width = 0

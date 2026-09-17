@@ -36,12 +36,14 @@ def test__CSTNode():
     hrse_child = HRSENode(4, 0, None)
     child_node = CSTNode(hrse_child, root_node)
 
-    assert child_node.shadows == hrse_child
+    assert child_node.size == hrse_child.size
+    assert child_node.depth == hrse_child.depth
     assert child_node.partition == []
     assert child_node.subsumed_variables == set()
     assert child_node.parent == root_node
 
-    assert root_node.shadows == hrse_root
+    assert root_node.size == hrse_root.size
+    assert root_node.depth == hrse_root.depth
     assert root_node.parent == None
     assert root_node.partition == []
     assert root_node.subsumed_variables == set()
@@ -311,13 +313,14 @@ def test__grow_cst__returns_cst_node_or_none():
     result = grow_cst(root, clauses)
     assert result is None or isinstance(result, CSTNode)
 
-def test__grow_cst__root_shadows_hrse_root():
+def test__grow_cst__root_mirrors_hrse_root():
     root = HRSENode(5, 0, None)
     root.children = [HRSENode(2, 1, root), HRSENode(1, 1, root)]
     clauses = [Clause(frozenset({1, 2})), Clause(frozenset({3, 4}))]
     result = grow_cst(root, clauses)
     if result is not None:
-        assert result.shadows is root
+        assert result.size == root.size
+        assert result.depth == root.depth
 
 def test__grow_cst__root_has_no_parent():
     root = HRSENode(5, 0, None)
@@ -339,7 +342,8 @@ def test__grow_cst__asdt_tree_small():
     result = grow_cst(root, clauses)
     assert result is None or isinstance(result, CSTNode)
     if result is not None:
-        assert result.shadows is root
+        assert result.size == root.size
+        assert result.depth == root.depth
         assert result.parent is None
 
 def test__grow_cst__asdt_tree_medium():
@@ -390,7 +394,8 @@ def test__grow_cst__multi_level_tree():
     result = grow_cst(root, clauses)
     assert result is None or isinstance(result, CSTNode)
     if result is not None:
-        assert result.shadows is root
+        assert result.size == root.size
+        assert result.depth == root.depth
 
 def test__grow_cst__larger_asdt_tree():
     # k=6 supports up to 12 clauses; use 10
