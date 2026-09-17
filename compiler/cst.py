@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from .bucket_queue import BucketQueue
 
+import numpy as np
+from typing import NamedTuple
 from typing_extensions import Set, Iterable
 from collections.abc import Iterator
 from compiler.hrse import HRSENode
@@ -112,14 +114,83 @@ class CSTNode:
                 max(len(c.variables) for c in batch._clauses)
             )
 
+# ---------- Numpy Context ----------
 
-# ---------- SeedGrow Heuristic ----------
+class NumpyContext(NamedTuple):
+    """Pre-computed structures enabling vectorized operations across a clause set.
+
+    clause_masks uses Python arbitrary-precision integers as bitmasks (one bit per variable
+    at its remapped 0-based index). Bitwise AND + int.bit_count() replaces per-variable
+    Python loops for set-intersection counting, which is ~10–100x faster than dict lookups
+    for typical clause widths.
+
+    pad_idx / padded_freq / clause_lengths enable a single matrix gather+sum in sort_clauses
+    that computes all n conflict degrees simultaneously, avoiding n sequential Python key calls.
+    """
+    var_to_idx: dict[variable, int]        # original variable ID → 0-based index
+    idx_to_var: np.ndarray                 # idx_to_var[i] == original variable ID
+    n_vars: int                            # total unique variable count
+    freq_arr: np.ndarray                   # freq_arr[i] = clause count for variable i
+    clause_arrs: dict[Clause, np.ndarray]  # clause → index array
+    clause_masks: dict[Clause, int]        # clause → Python int bitmask (for grow_block)
+    # Sort-matrix fields (indexed by position in the clause list passed to _build_numpy_context)
+    pad_idx: np.ndarray                    # shape (n_clauses, max_width); padding sentinel = n_vars
+    padded_freq: np.ndarray                # freq_arr extended by one 0 for the sentinel
+    clause_lengths: np.ndarray             # shape (n_clauses,); dtype int64
+
+
+def _build_numpy_context(clauses: list[Clause]) -> NumpyContext | None:
+    r"""
+    Build numpy structures, bitmasks, and the sort padded-matrix for a clause set.
+    Returns None when the clause list is empty.
+    """
+    if not clauses:
+        return None
+
+    all_vars = sorted({v for c in clauses for v in c.variables})
+    var_to_idx: dict[variable, int] = {v: i for i, v in enumerate(all_vars)}
+    n = len(all_vars)
+    idx_to_var = np.array(all_vars, dtype=np.int64)
+    freq_arr = np.zeros(n, dtype=np.int64)
+    clause_arrs: dict[Clause, np.ndarray] = {}
+    clause_masks: dict[Clause, int] = {}
+
+    max_w = max(len(c.variables) for c in clauses)
+    m = len(clauses)
+    pad_idx = np.full((m, max_w), n, dtype=np.intp)   # sentinel = n (points to freq 0)
+    clause_lengths = np.empty(m, dtype=np.int64)
+
+    for i, c in enumerate(clauses):
+        arr = np.array([var_to_idx[v] for v in c.variables], dtype=np.intp)
+        clause_arrs[c] = arr
+        freq_arr[arr] += 1
+        mask = 0
+        for v in c.variables:
+            mask |= 1 << var_to_idx[v]
+        clause_masks[c] = mask
+        pad_idx[i, : len(arr)] = arr
+        clause_lengths[i] = len(arr)
+
+    padded_freq = np.empty(n + 1, dtype=np.int64)
+    padded_freq[:n] = freq_arr
+    padded_freq[n] = 0   # sentinel: padding columns contribute 0 to freq sums
+
+    return NumpyContext(
+        var_to_idx, idx_to_var, n, freq_arr,
+        clause_arrs, clause_masks,
+        pad_idx, padded_freq, clause_lengths,
+    )
+
+
+
+# ---------- Helper Functions ----------
 
 r"""
 In the original paper, clauses were expected to be predistributed across HRSE leaves. However,
 neither paper gives a proper ordering for this. Instead, here, we use SeedGrow on a global
 clause set $\boldsymbol{R = \{C_1, ..., C_n\}}$ where $\boldsymbol{n}$ is the size of the CNF.
 """
+
 
 def build_occurence_list(clauses: list[Clause]) -> omap:
     r"""Creates an occurence mapping of $\boldsymbol{v \mapsto [C_i, C_j, ...]}$"""
@@ -172,42 +243,121 @@ def is_feasible(batch: Batch, partition: Partition, ancilla_budget: int) -> bool
     return occupied_ancilla + batch.redundancy < ancilla_budget
 
 
-def sort_clauses(clauses: list[Clause], omap: omap) -> Iterator[Clause]:
+def sort_clauses(clauses: list[Clause], omap: omap, ctx: NumpyContext | None = None) -> Iterator[Clause]:
     r"""
     Sorts clauses lowest conflict. Conflict is resolved by $\boldsymbol{( d_i, |\widehat{C_i}, i|)}$
     Or, in other words, is broken  by the following priorities:
     1. Conflict degree $\boldsymbol{d_i}$
     2. Clause length $\boldsymbol{|\widehat{C_i}|}$
     3. Insertion order $\boldsymbol{i}$
-    """
-    clauses.sort(key=lambda c: (
-        conflict_deg(c, omap),
-        len(c.variables)))
 
+    When ctx is provided (pre-built by _build_numpy_context), uses a pre-computed padded index
+    matrix so all conflict degrees are gathered in one vectorized batch operation. Without ctx,
+    falls back to a Python sort with per-clause dict lookups.
+    """
+    if not clauses:
+        return iter(clauses)
+
+    if ctx is not None:
+        # Fast path: padded matrix already built. One gather + row-sum + lexsort.
+        freq_sums = ctx.padded_freq[ctx.pad_idx].sum(axis=1)
+        conflict_degrees = freq_sums - ctx.clause_lengths
+        order = np.lexsort((ctx.clause_lengths, conflict_degrees))
+        clauses[:] = [clauses[int(i)] for i in order]
+        return iter(clauses)
+
+    # Fallback: build structures on the fly (slower, used when no ctx is pre-built).
+    all_vars = sorted({v for c in clauses for v in c.variables})
+    var_to_idx: dict[variable, int] = {v: i for i, v in enumerate(all_vars)}
+    n_vars = len(all_vars)
+    n = len(clauses)
+
+    freq_arr = np.array([len(omap.get(v, set())) for v in all_vars], dtype=np.int64)
+    max_w = max(len(c.variables) for c in clauses)
+
+    pad_idx = np.full((n, max_w), n_vars, dtype=np.intp)
+    lengths = np.empty(n, dtype=np.int64)
+    for i, c in enumerate(clauses):
+        idxs = [var_to_idx[v] for v in c.variables]
+        pad_idx[i, : len(idxs)] = idxs
+        lengths[i] = len(idxs)
+
+    padded_freq = np.empty(n_vars + 1, dtype=np.int64)
+    padded_freq[:n_vars] = freq_arr
+    padded_freq[n_vars] = 0
+
+    freq_sums = padded_freq[pad_idx].sum(axis=1)
+    conflict_degrees = freq_sums - lengths
+    order = np.lexsort((lengths, conflict_degrees))
+    clauses[:] = [clauses[int(i)] for i in order]
     return iter(clauses)
 
 
-def grow_cst(root: HRSENode, clauses: list[Clause]):
-    r""" Let:
-        $\boldsymbol{R}$ be the set of clauses $\boldsymbol{[C_1, ..., C_m]}$
-        $\boldsymbol{k}$ be the max clause width $\boldsymbol{\text{arg max}_{i\in R}|\widehat{C_i}|}$
-    """
+# ---------- PRIMARY ENTRY POINT ----------
 
-    # 1. Pre-heuristic setup
-    #   Initialize variable occurence
+
+def grow_cst(root: HRSENode, clauses: list[Clause]) -> CSTNode | None:
+    r"""
+    Build a CST for the HRSE tree rooted at `root` by greedily assigning clauses
+    $\boldsymbol{R = [C_1, \ldots, C_m]}$ to nodes via top-down DFS.
+
+    Steps:
+      1. Sort all clauses by conflict degree (globally, once).
+      2. Build numpy / bitmask context once — shared across every seed_grow call to avoid
+         O(nodes × remaining_clauses) rebuilds.
+      3. Traverse the HRSE tree pre-order (root first). Each node receives a CSTNode
+         whose partition is built greedily from the remaining unassigned clauses.
+
+    Returns the root CSTNode, or None if no clauses could be assigned to the root.
+    """
+    if not clauses:
+        return None
+
     var_occurences = build_occurence_list(clauses)
-    #   Sort clauses by the conflict degrees $\boldsymbol{d_i}$
-    sort_clauses(clauses, var_occurences)
+    ctx = _build_numpy_context(clauses)   # build once; reused by sort and all seed_grow calls
+    sort_clauses(clauses, var_occurences, ctx)
+
+    remaining = list(clauses)
+    return _build_cst_subtree(root, None, remaining, var_occurences, ctx)
+
+
+def _build_cst_subtree(
+    hrse_node: HRSENode,
+    parent_cst: CSTNode | None,
+    remaining: list[Clause],
+    omap: omap,
+    ctx: NumpyContext | None,
+) -> CSTNode | None:
+    r"""Pre-order DFS: build a CSTNode for hrse_node, then recurse into its children.
+
+    `remaining` is a shared mutable list; each seed_grow call removes the clauses it absorbs,
+    so children automatically receive only the clauses the parent didn't claim.
+    """
+    cst_node = seed_grow(hrse_node, remaining, omap, ctx)
+    if cst_node is not None:
+        cst_node.parent = parent_cst
+
+    for child in hrse_node.children:
+        _build_cst_subtree(child, cst_node, remaining, omap, ctx)
+
+    return cst_node
 
 
 # ---------- Paper Defined Methods ----------
 
-
-def seed_grow(node: HRSENode, remaining_clauses: list[Clause], omap: omap) -> CSTNode | None:
+def seed_grow(
+    node: HRSENode,
+    remaining_clauses: list[Clause],
+    omap: omap,
+    ctx: NumpyContext | None = None,
+) -> CSTNode | None:
     r"""
     Greedily builds a partition $\boldsymbol{\Pi}$ at a compute node $\boldsymbol{v}$ by iteratively adding the clause
     of lowest redundancy impact $\boldsymbol{\delta_i = |\widehat{C_i} \cap U|}$ without exceeding the current allowance
     $\boldsymbol{a_q - i}$
+
+    When `ctx` is provided (pre-built by the caller), it is passed directly to grow_block,
+    avoiding an O(|remaining_clauses|) rebuild per node.
     """
     if node.size == 0:
         return None
@@ -216,11 +366,14 @@ def seed_grow(node: HRSENode, remaining_clauses: list[Clause], omap: omap) -> CS
     if node.size < num_leaves:
         return None
 
+    # Use caller-provided ctx if available; otherwise build from the current remaining set.
+    node_ctx = ctx if ctx is not None else _build_numpy_context(remaining_clauses)
+
     partition: Partition = []
     budget = node.size - num_leaves
 
     while budget > 0 and remaining_clauses:
-        new_batch = grow_block(budget, remaining_clauses, omap)
+        new_batch = grow_block(budget, remaining_clauses, omap, node_ctx)
         partition.insert(0, new_batch)   # prepend, removing need to reverse order
         budget += len(new_batch._clauses)   # $\boldsymbol{b \leftarrow b + |\beta|}$
 
@@ -254,8 +407,6 @@ def merge_adjacent(partition: list, budget: int) -> list:
             new_partition.append(head_batch)
             continue
 
-        # Accumulate merges in-place: one dict/set copy per i instead of one per accepted merge.
-        # This reduces total dict-copy work from O(n²·k) to O(n·k).
         acc_vars = dict(head_batch._variables)
         acc_clauses = set(head_batch._clauses)
         acc_redundancy = head_batch.redundancy
@@ -289,8 +440,12 @@ def merge_adjacent(partition: list, budget: int) -> list:
     return new_partition
 
 
-
-def grow_block(budget: int, unassigned_clauses: list[Clause], omap: omap) -> Batch:
+def grow_block(
+    budget: int,
+    unassigned_clauses: list[Clause],
+    omap: omap,
+    ctx: NumpyContext | None = None,
+) -> Batch:
     r""" Grows a single batch $\boldsymbol{\beta}$ in a CST node """
 
     # 1. Batch setup. Get seed and initialize batch variables
@@ -304,18 +459,30 @@ def grow_block(budget: int, unassigned_clauses: list[Clause], omap: omap) -> Bat
     # 2. Batch growth setup: batch_vars is the live dict (mutations from add_clause are visible)
     batch_vars = batch._variables
 
+    # batch_mask tracks variable presence as a Python integer bitmask (bit i set ↔ variable i in batch).
+    # (batch_mask & clause_mask).bit_count() replaces per-variable Python loops ~10-100x faster.
+    # Initialized to 0; populated when ctx is available.
+    batch_mask: int = 0
+    next_clause_mask: int = 0
+    if ctx is not None:
+        batch_mask = ctx.clause_masks[seed_clause]
+
     #   Create initial conflict buckets of remaining clauses
     in_queue: set[Clause] = set()
     conflict_buckets = BucketQueue[Clause](max_key=max_width)
     for c in unassigned_clauses:
         if c is seed_clause:
             continue
-        impact = 0
-        for v in c.variables:
-            if v in batch_vars:
-                impact += 1
+        if ctx is not None:
+            impact = (batch_mask & ctx.clause_masks[c]).bit_count()
+        else:
+            impact = 0
+            for v in c.variables:
+                if v in batch_vars:
+                    impact += 1
         conflict_buckets.add(impact, c)
         in_queue.add(c)
+
     next_clause, next_impact = conflict_buckets.get_min()
     while next_clause is not None and next_impact is not None and next_impact <= budget - batch.redundancy:
         # 2.1 Remove clause from conflict buckets
@@ -323,26 +490,37 @@ def grow_block(budget: int, unassigned_clauses: list[Clause], omap: omap) -> Bat
         in_queue.discard(next_clause)
         removed.add(next_clause)
 
-        # 2.2 Update conflict degrees incrementally (avoid frozenset for new_U)
+        # 2.2 Update conflict degrees incrementally
         next_vars = next_clause.variables
+
+        if ctx is not None:
+            next_clause_mask = ctx.clause_masks[next_clause]
 
         for v in next_vars:
             for c in omap[v]:
                 if c not in in_queue:
                     continue
-                # Single scan: compute old_key and delta (new vars from next_vars) simultaneously
-                old_key = 0
-                delta = 0
-                for v2 in c.variables:
-                    if v2 in batch_vars:
-                        old_key += 1
-                    elif v2 in next_vars:
-                        delta += 1
+                if ctx is not None:
+                    c_mask = ctx.clause_masks[c]
+                    old_key = (batch_mask & c_mask).bit_count()
+                    # Bits in c that are NOT in batch AND are in next_clause
+                    delta = (c_mask & next_clause_mask & ~batch_mask).bit_count()
+                else:
+                    # Single scan: compute old_key and delta (new vars from next_vars) simultaneously
+                    old_key = 0
+                    delta = 0
+                    for v2 in c.variables:
+                        if v2 in batch_vars:
+                            old_key += 1
+                        elif v2 in next_vars:
+                            delta += 1
                 if delta:
                     conflict_buckets.update_key(old_key + delta, old_key, c)
 
         # 2.3 Add clause to batch
         batch.add_clause(next_clause)
+        if ctx is not None:
+            batch_mask |= next_clause_mask   # mark next_clause's variables as present in batch
 
         # 2.4 Get next set of clauses
         next_clause, next_impact = conflict_buckets.get_min()

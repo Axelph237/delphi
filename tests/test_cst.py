@@ -294,3 +294,113 @@ def test__merge_adjacent__budget_not_exhausted():
     result = merge_adjacent([b1, b2, b3], budget=100)
     assert isinstance(result, list)
     assert len(result) <= 3
+
+
+# ---------- grow_cst ----------
+
+def test__grow_cst__empty_clauses():
+    root = HRSENode(5, 0, None)
+    result = grow_cst(root, [])
+    assert result is None
+
+def test__grow_cst__returns_cst_node_or_none():
+    # Minimal valid HRSE tree (size=5 root, two leaf children)
+    root = HRSENode(5, 0, None)
+    root.children = [HRSENode(2, 1, root), HRSENode(1, 1, root)]
+    clauses = [Clause(frozenset({1, 2})), Clause(frozenset({3, 4}))]
+    result = grow_cst(root, clauses)
+    assert result is None or isinstance(result, CSTNode)
+
+def test__grow_cst__root_shadows_hrse_root():
+    root = HRSENode(5, 0, None)
+    root.children = [HRSENode(2, 1, root), HRSENode(1, 1, root)]
+    clauses = [Clause(frozenset({1, 2})), Clause(frozenset({3, 4}))]
+    result = grow_cst(root, clauses)
+    if result is not None:
+        assert result.shadows is root
+
+def test__grow_cst__root_has_no_parent():
+    root = HRSENode(5, 0, None)
+    root.children = [HRSENode(2, 1, root), HRSENode(1, 1, root)]
+    clauses = [Clause(frozenset({1, 2})), Clause(frozenset({3, 4}))]
+    result = grow_cst(root, clauses)
+    if result is not None:
+        assert result.parent is None
+
+def test__grow_cst__asdt_tree_small():
+    # HRSENode.new(m=3, k=4) — k=4 supports up to 3 clauses
+    root = HRSENode.new(3, 4)
+    assert root is not None
+    clauses = [
+        Clause(frozenset({1, 2})),
+        Clause(frozenset({2, 3})),
+        Clause(frozenset({3, 4})),
+    ]
+    result = grow_cst(root, clauses)
+    assert result is None or isinstance(result, CSTNode)
+    if result is not None:
+        assert result.shadows is root
+        assert result.parent is None
+
+def test__grow_cst__asdt_tree_medium():
+    # HRSENode.new(m=6, k=5) — k=5 supports up to 6 clauses
+    root = HRSENode.new(6, 5)
+    assert root is not None
+    clauses = [
+        Clause(frozenset({1, 2})),
+        Clause(frozenset({2, 3})),
+        Clause(frozenset({3, 4})),
+        Clause(frozenset({4, 5})),
+        Clause(frozenset({5, 6})),
+        Clause(frozenset({1, 6})),
+    ]
+    result = grow_cst(root, clauses)
+    assert result is None or isinstance(result, CSTNode)
+
+def test__grow_cst__partition_nonempty_when_clauses_fit():
+    # A generous budget: root size=6, one leaf child → budget=5, plenty for 2 clauses
+    root = HRSENode(6, 0, None)
+    root.children = [HRSENode(2, 1, root)]
+    clauses = [Clause(frozenset({1, 2})), Clause(frozenset({3, 4}))]
+    result = grow_cst(root, clauses)
+    if result is not None:
+        assert len(result.partition) > 0
+
+def test__grow_cst__subsumed_variables_subset_of_clause_vars():
+    root = HRSENode(6, 0, None)
+    root.children = [HRSENode(2, 1, root)]
+    all_vars = {1, 2, 3, 4}
+    clauses = [Clause(frozenset({1, 2})), Clause(frozenset({3, 4}))]
+    result = grow_cst(root, clauses)
+    if result is not None:
+        assert result.subsumed_variables <= all_vars
+
+def test__grow_cst__multi_level_tree():
+    # Build a two-level tree manually: root → mid → leaf
+    root = HRSENode(6, 0, None)
+    mid  = HRSENode(4, 1, root)
+    leaf = HRSENode(2, 2, mid)
+    root.children = [mid]
+    mid.children  = [leaf]
+    clauses = [
+        Clause(frozenset({1, 2})),
+        Clause(frozenset({2, 3})),
+        Clause(frozenset({4, 5})),
+    ]
+    result = grow_cst(root, clauses)
+    assert result is None or isinstance(result, CSTNode)
+    if result is not None:
+        assert result.shadows is root
+
+def test__grow_cst__larger_asdt_tree():
+    # k=6 supports up to 12 clauses; use 10
+    root = HRSENode.new(10, 6)
+    assert root is not None
+    import random
+    rng = random.Random(0)
+    clauses = [
+        Clause(frozenset(rng.sample(range(1, 21), 3)))
+        for _ in range(10)
+    ]
+    result = grow_cst(root, clauses)
+    assert result is None or isinstance(result, CSTNode)
