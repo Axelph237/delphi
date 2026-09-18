@@ -18,9 +18,14 @@ type omap = dict[variable, set[Clause]]   # An occurence mapping
 
 type Partition = Iterable[Batch]
 
-@dataclass(frozen=True)
+@dataclass
 class Clause:
-    variables: frozenset[variable]
+    normed_variables: tuple[variable, ...]   # Normalized variables (sorted, no duplicates)
+    variable_polarity_mask: int   # True at index i if variable i is position, False if negative
+
+    def __init__(self, variables: Set[variable], polarity_mask: int):
+        self.normed_variables = tuple(sorted(variables))
+        self.variable_polarity_mask = polarity_mask
 
 
 @dataclass
@@ -50,7 +55,7 @@ class Batch:
 
         # Single pass: count redundancy impact and update variable counts simultaneously
         delta = 0
-        for v in clause.variables:
+        for v in clause.normed_variables:
             existing = self._variables.get(v, 0)
             if existing:
                 delta += 1
@@ -109,7 +114,7 @@ class CSTNode(HRSENode):
         if batch._clauses:
             self.max_clause_width = max(
                 self.max_clause_width,
-                max(len(c.variables) for c in batch._clauses)
+                max(len(c.normed_variables) for c in batch._clauses)
             )
 
 
@@ -127,7 +132,7 @@ def build_occurence_list(clauses: list[Clause]) -> omap:
     vars_to_clauses: omap = dict()
 
     for c in clauses:
-        for v in c.variables:
+        for v in c.normed_variables:
             vars_to_clauses.setdefault(v, set()).add(c)
 
     return vars_to_clauses
@@ -146,7 +151,7 @@ def conflict_deg(C: Clause, omap: omap) -> int:
     $\quad\boldsymbol{d_i=\sum_{z\in\widehat{C_i}}(v_z - 1)}$
 
     """
-    return sum((freq(v, omap) - 1 for v in C.variables), 0)
+    return sum((freq(v, omap) - 1 for v in C.normed_variables), 0)
 
 
 def redundancy_impact(C: Clause, var_set: Set[variable]) -> int:
@@ -157,7 +162,7 @@ def redundancy_impact(C: Clause, var_set: Set[variable]) -> int:
     $\quad\boldsymbol{\delta_i = |\widehat{C_i} \cap U|}$
 
     """
-    return sum(1 for v in C.variables if v in var_set)
+    return sum(1 for v in C.normed_variables if v in var_set)
 
 
 def is_feasible(batch: Batch, partition: Partition, ancilla_budget: int) -> bool:
@@ -197,18 +202,18 @@ def sort_clauses(clauses: list[Clause], omap: omap, ctx: NumpyContext | None = N
         return iter(clauses)
 
     # Fallback: build structures on the fly (slower, used when no ctx is pre-built).
-    all_vars = sorted({v for c in clauses for v in c.variables})
+    all_vars = sorted({v for c in clauses for v in c.normed_variables})
     var_to_idx: dict[variable, int] = {v: i for i, v in enumerate(all_vars)}
     n_vars = len(all_vars)
     n = len(clauses)
 
     freq_arr = np.array([len(omap.get(v, set())) for v in all_vars], dtype=np.int64)
-    max_w = max(len(c.variables) for c in clauses)
+    max_w = max(len(c.normed_variables) for c in clauses)
 
     pad_idx = np.full((n, max_w), n_vars, dtype=np.intp)
     lengths = np.empty(n, dtype=np.int64)
     for i, c in enumerate(clauses):
-        idxs = [var_to_idx[v] for v in c.variables]
+        idxs = [var_to_idx[v] for v in c.normed_variables]
         pad_idx[i, : len(idxs)] = idxs
         lengths[i] = len(idxs)
 
@@ -384,7 +389,7 @@ def grow_block(
     removed = {seed_clause}
 
     # Bound BucketQueue by max clause width (O(k) buckets instead of O(n))
-    max_width = max(len(c.variables) for c in unassigned_clauses)
+    max_width = max(len(c.normed_variables) for c in unassigned_clauses)
 
     # 2. Batch growth setup: batch_vars is the live dict (mutations from add_clause are visible)
     batch_vars = batch._variables
@@ -407,7 +412,7 @@ def grow_block(
             impact = (batch_mask & ctx.clause_masks[c]).bit_count()
         else:
             impact = 0
-            for v in c.variables:
+            for v in c.normed_variables:
                 if v in batch_vars:
                     impact += 1
         conflict_buckets.add(impact, c)
@@ -421,7 +426,7 @@ def grow_block(
         removed.add(next_clause)
 
         # 2.2 Update conflict degrees incrementally
-        next_vars = next_clause.variables
+        next_vars = next_clause.normed_variables
 
         if ctx is not None:
             next_clause_mask = ctx.clause_masks[next_clause]
@@ -439,7 +444,7 @@ def grow_block(
                     # Single scan: compute old_key and delta (new vars from next_vars) simultaneously
                     old_key = 0
                     delta = 0
-                    for v2 in c.variables:
+                    for v2 in c.normed_variables:
                         if v2 in batch_vars:
                             old_key += 1
                         elif v2 in next_vars:

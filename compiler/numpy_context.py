@@ -39,7 +39,7 @@ def build_numpy_context(clauses: list[Clause]) -> NumpyContext | None:
     if not clauses:
         return None
 
-    all_vars = sorted({v for c in clauses for v in c.variables})
+    all_vars = sorted({v for c in clauses for v in c.normed_variables})
     var_to_idx: dict[int, int] = {v: i for i, v in enumerate(all_vars)}
     n = len(all_vars)
     idx_to_var = np.array(all_vars, dtype=np.int64)
@@ -47,17 +47,17 @@ def build_numpy_context(clauses: list[Clause]) -> NumpyContext | None:
     clause_arrs: dict = {}
     clause_masks: dict = {}
 
-    max_w = max(len(c.variables) for c in clauses)
+    max_w = max(len(c.normed_variables) for c in clauses)
     m = len(clauses)
     pad_idx = np.full((m, max_w), n, dtype=np.intp)   # sentinel = n (points to freq 0)
     clause_lengths = np.empty(m, dtype=np.int64)
 
     for i, c in enumerate(clauses):
-        arr = np.array([var_to_idx[v] for v in c.variables], dtype=np.intp)
+        arr = np.array([var_to_idx[v] for v in c.normed_variables], dtype=np.intp)
         clause_arrs[c] = arr
         freq_arr[arr] += 1
         mask = 0
-        for v in c.variables:
+        for v in c.normed_variables:
             mask |= 1 << var_to_idx[v]
         clause_masks[c] = mask
         pad_idx[i, : len(arr)] = arr
