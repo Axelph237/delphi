@@ -18,14 +18,14 @@ type omap = dict[variable, set[Clause]]   # An occurence mapping
 
 type Partition = Iterable[Batch]
 
-@dataclass
+@dataclass(frozen=True)
 class Clause:
     normed_variables: tuple[variable, ...]   # Normalized variables (sorted, no duplicates)
     variable_polarity_mask: int   # True at index i if variable i is position, False if negative
 
     def __init__(self, variables: Set[variable], polarity_mask: int):
-        self.normed_variables = tuple(sorted(variables))
-        self.variable_polarity_mask = polarity_mask
+        object.__setattr__(self, 'normed_variables', tuple(sorted(variables)))
+        object.__setattr__(self, 'variable_polarity_mask', polarity_mask)
 
 
 @dataclass
@@ -78,6 +78,10 @@ class Batch:
     @property
     def variables(self) -> frozenset[variable]:
         return frozenset(self._variables)
+
+    @property
+    def variables_to_count(self):
+        return self._variables
 
     @property
     def clauses(self) -> frozenset[Clause]:

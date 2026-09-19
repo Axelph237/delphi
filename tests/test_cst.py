@@ -9,21 +9,21 @@ def test__Batch():
     assert empty_batch.clauses == frozenset()
 
     # BASIC BATCH INITIALIZATION
-    clause_1 = Clause(frozenset({1, 2}))
+    clause_1 = Clause(frozenset({1, 2}), 0)
     init_batch = Batch({clause_1})
     assert init_batch.clauses == frozenset({clause_1})
     assert init_batch.variables == frozenset({1, 2})
     assert init_batch.redundancy == 0
 
     # REDUNDANT CLAUSE
-    clause_2 = Clause(frozenset({1, 2}))
+    clause_2 = Clause(frozenset({1, 2}), 0)
     init_batch.add_clause(clause_2)
     assert init_batch.clauses == frozenset({clause_1})
     assert init_batch.variables == frozenset({1, 2})
     assert init_batch.redundancy == 0
 
     # REDUNDANCY IMPACT
-    clause_3 = Clause(frozenset({2, 3}))
+    clause_3 = Clause(frozenset({2, 3}), 0)
     init_batch.add_clause(clause_3)
     assert init_batch.clauses == frozenset({clause_1, clause_3})
     assert init_batch.variables == frozenset({1, 2, 3})
@@ -49,8 +49,8 @@ def test__CSTNode():
     assert root_node.subsumed_variables == set()
 
     # CST Node operations
-    batch_1 = Batch({Clause(frozenset({1, 2}))})
-    batch_2 = Batch({Clause(frozenset({3, 4, 2}))})
+    batch_1 = Batch({Clause(frozenset({1, 2}), 0)})
+    batch_2 = Batch({Clause(frozenset({3, 4, 2}), 0)})
 
     child_node.add_batch(batch_1)
     child_node.add_batch(batch_2)
@@ -60,8 +60,8 @@ def test__CSTNode():
     assert child_node.max_clause_width == 3
 
     # Direct partition setting
-    batch_3 = Batch({Clause(frozenset({1, 2, 3}))})
-    batch_4 = Batch({Clause(frozenset({1, 2}))})
+    batch_3 = Batch({Clause(frozenset({1, 2, 3}), 0)})
+    batch_4 = Batch({Clause(frozenset({1, 2}), 0)})
 
     child_node.set_partition([batch_3, batch_4])
 
@@ -73,9 +73,9 @@ def test__CSTNode():
 # ---------- build_occurence_list ----------
 
 def test__build_occurence_list():
-    c1 = Clause(frozenset({1, 2}))
-    c2 = Clause(frozenset({2, 3}))
-    c3 = Clause(frozenset({3, 4}))
+    c1 = Clause(frozenset({1, 2}), 0)
+    c2 = Clause(frozenset({2, 3}), 0)
+    c3 = Clause(frozenset({3, 4}), 0)
 
     omap = build_occurence_list([c1, c2, c3])
 
@@ -92,15 +92,15 @@ def test__build_occurence_list__no_clauses():
 # ---------- freq ----------
 
 def test__freq():
-    c1 = Clause(frozenset({1, 2}))
-    c2 = Clause(frozenset({2, 3}))
+    c1 = Clause(frozenset({1, 2}), 0)
+    c2 = Clause(frozenset({2, 3}), 0)
     omap = build_occurence_list([c1, c2])
 
     assert freq(2, omap) == 2   # appears in both clauses
     assert freq(1, omap) == 1   # appears in only one clause
 
 def test__freq__var_missing_from_omap():
-    omap = build_occurence_list([Clause(frozenset({1, 2}))])
+    omap = build_occurence_list([Clause(frozenset({1, 2}), 0)])
     assert freq(99, omap) == 0
 
 
@@ -108,25 +108,25 @@ def test__freq__var_missing_from_omap():
 
 def test__conflict_degree():
     # c1 shares var 2 with c2, and var 3 with c3
-    c1 = Clause(frozenset({1, 2, 3}))
-    c2 = Clause(frozenset({2, 4}))
-    c3 = Clause(frozenset({3, 5}))
+    c1 = Clause(frozenset({1, 2, 3}), 0)
+    c2 = Clause(frozenset({2, 4}), 0)
+    c3 = Clause(frozenset({3, 5}), 0)
     omap = build_occurence_list([c1, c2, c3])
 
     # d(c1) = (freq(1)-1) + (freq(2)-1) + (freq(3)-1) = 0 + 1 + 1 = 2
     assert conflict_deg(c1, omap) == 2
 
 def test__conflict_degree__single_var_clause():
-    c1 = Clause(frozenset({1}))
-    c2 = Clause(frozenset({2}))
+    c1 = Clause(frozenset({1}), 0)
+    c2 = Clause(frozenset({2}), 0)
     omap = build_occurence_list([c1, c2])
 
     assert conflict_deg(c1, omap) == 0
     assert conflict_deg(c2, omap) == 0
 
 def test__conflict_degree__no_redundant_vars():
-    c1 = Clause(frozenset({1, 2}))
-    c2 = Clause(frozenset({3, 4}))
+    c1 = Clause(frozenset({1, 2}), 0)
+    c2 = Clause(frozenset({3, 4}), 0)
     omap = build_occurence_list([c1, c2])
 
     assert conflict_deg(c1, omap) == 0
@@ -136,12 +136,12 @@ def test__conflict_degree__no_redundant_vars():
 # ---------- redundancy_impact ----------
 
 def test__redundancy_impact():
-    c = Clause(frozenset({1, 2, 3}))
+    c = Clause(frozenset({1, 2, 3}), 0)
     # var_set contains 1 and 3 — overlap of size 2
     assert redundancy_impact(c, frozenset({1, 3, 5})) == 2
 
 def test__redundancy_impact__no_impact():
-    c = Clause(frozenset({1, 2, 3}))
+    c = Clause(frozenset({1, 2, 3}), 0)
     # No overlap with var_set
     assert redundancy_impact(c, frozenset({4, 5, 6})) == 0
 
@@ -150,25 +150,25 @@ def test__redundancy_impact__no_impact():
 
 def test__is_feasible():
     # Empty partition, single clause batch — should be feasible with any positive budget
-    b = Batch({Clause(frozenset({1, 2}))})   # 1 clause, 0 redundancy
+    b = Batch({Clause(frozenset({1, 2}), 0)})   # 1 clause, 0 redundancy
     assert is_feasible(b, [], 5) == True
 
 def test__is_feasible__budget_exhausted():
     # Fill partition with 10 clauses -> occupied_ancilla = 10 > budget = 5
-    clauses = [Clause(frozenset({i})) for i in range(10)]
+    clauses = [Clause(frozenset({i}), 0) for i in range(10)]
     big_batch = Batch(set(clauses))
     partition = [big_batch]
 
-    new_batch = Batch({Clause(frozenset({100}))})
+    new_batch = Batch({Clause(frozenset({100}), 0)})
     assert is_feasible(new_batch, partition, 5) == False
 
 
 # ---------- sort_clauses ----------
 
 def test__sort_clauses():
-    c1 = Clause(frozenset({1, 2}))
-    c2 = Clause(frozenset({2, 3}))
-    c3 = Clause(frozenset({4, 5}))  # disjoint — conflict_deg = 0
+    c1 = Clause(frozenset({1, 2}), 0)
+    c2 = Clause(frozenset({2, 3}), 0)
+    c3 = Clause(frozenset({4, 5}), 0)  # disjoint — conflict_deg = 0
     omap = build_occurence_list([c1, c2, c3])
 
     result = list(sort_clauses([c1, c2, c3], omap))
@@ -181,16 +181,16 @@ def test__sort_clauses__empty_list():
     assert result == []
 
 def test__sort_clauses__single_clause():
-    c = Clause(frozenset({1, 2}))
+    c = Clause(frozenset({1, 2}), 0)
     omap = build_occurence_list([c])
     result = list(sort_clauses([c], omap))
     assert result == [c]
 
 def test__sort_clauses__multiple_clauses():
     # Tie-break by clause length (shorter first) when conflict degrees are equal
-    c_short = Clause(frozenset({10}))         # length 1
-    c_long  = Clause(frozenset({20, 30}))     # length 2
-    c_high  = Clause(frozenset({10, 20}))     # shares vars with both — highest conflict
+    c_short = Clause(frozenset({10}), 0)         # length 1
+    c_long  = Clause(frozenset({20, 30}), 0)     # length 2
+    c_high  = Clause(frozenset({10, 20}), 0)     # shares vars with both — highest conflict
 
     omap = build_occurence_list([c_short, c_long, c_high])
     result = list(sort_clauses([c_short, c_long, c_high], omap))
@@ -208,7 +208,7 @@ def test__seed_grow__build():
     hrse_node = HRSENode(5, 0, None)
     hrse_node.children = [HRSENode(2, 1, hrse_node), HRSENode(1, 1, hrse_node)]
 
-    clauses = [Clause(frozenset({1, 2})), Clause(frozenset({3, 4}))]
+    clauses = [Clause(frozenset({1, 2}), 0), Clause(frozenset({3, 4}), 0)]
     omap = build_occurence_list(clauses)
 
     result = seed_grow(hrse_node, clauses[:], omap)
@@ -224,7 +224,7 @@ def test__seed_grow__build_single_clause():
     hrse_node = HRSENode(3, 0, None)
     hrse_node.children = [HRSENode(2, 1, hrse_node)]
 
-    clauses = [Clause(frozenset({1, 2}))]
+    clauses = [Clause(frozenset({1, 2}), 0)]
     omap = build_occurence_list(clauses)
 
     result = seed_grow(hrse_node, clauses[:], omap)
@@ -239,9 +239,9 @@ def test__seed_grow__build_multiple_clauses():
     ]
 
     clauses = [
-        Clause(frozenset({1, 2})),
-        Clause(frozenset({2, 3})),
-        Clause(frozenset({4, 5})),
+        Clause(frozenset({1, 2}), 0),
+        Clause(frozenset({2, 3}), 0),
+        Clause(frozenset({4, 5}), 0),
     ]
     omap = build_occurence_list(clauses)
 
@@ -255,8 +255,8 @@ def test__seed_grow__build_multiple_clauses():
 
 def test__merge_adjacent():
     # Disjoint clauses with generous budget
-    c1 = Clause(frozenset({1}))
-    c2 = Clause(frozenset({2}))
+    c1 = Clause(frozenset({1}), 0)
+    c2 = Clause(frozenset({2}), 0)
     b1 = Batch({c1})
     b2 = Batch({c2})
 
@@ -269,7 +269,7 @@ def test__merge_adjacent__empty_partition():
     assert result == []
 
 def test__merge_adjacent__single_batch():
-    c = Clause(frozenset({1, 2}))
+    c = Clause(frozenset({1, 2}), 0)
     b = Batch({c})
     result = merge_adjacent([b], budget=10)
     assert len(result) == 1
@@ -277,7 +277,7 @@ def test__merge_adjacent__single_batch():
 
 def test__merge_adjacent__budget_exhausted():
     # Tight budget: 5 batches each with 1 clause; budget=2 -> merging blocked quickly
-    clauses = [Clause(frozenset({i})) for i in range(5)]
+    clauses = [Clause(frozenset({i}), 0) for i in range(5)]
     batches = [Batch({c}) for c in clauses]
 
     result = merge_adjacent(batches, budget=2)
@@ -286,9 +286,9 @@ def test__merge_adjacent__budget_exhausted():
 
 def test__merge_adjacent__budget_not_exhausted():
     # Three disjoint single-clause batches with a very large budget
-    c1 = Clause(frozenset({1}))
-    c2 = Clause(frozenset({2}))
-    c3 = Clause(frozenset({3}))
+    c1 = Clause(frozenset({1}), 0)
+    c2 = Clause(frozenset({2}), 0)
+    c3 = Clause(frozenset({3}), 0)
     b1 = Batch({c1})
     b2 = Batch({c2})
     b3 = Batch({c3})
@@ -309,14 +309,14 @@ def test__grow_cst__returns_cst_node_or_none():
     # Minimal valid HRSE tree (size=5 root, two leaf children)
     root = HRSENode(5, 0, None)
     root.children = [HRSENode(2, 1, root), HRSENode(1, 1, root)]
-    clauses = [Clause(frozenset({1, 2})), Clause(frozenset({3, 4}))]
+    clauses = [Clause(frozenset({1, 2}), 0), Clause(frozenset({3, 4}), 0)]
     result = grow_cst(root, clauses)
     assert result is None or isinstance(result, CSTNode)
 
 def test__grow_cst__root_mirrors_hrse_root():
     root = HRSENode(5, 0, None)
     root.children = [HRSENode(2, 1, root), HRSENode(1, 1, root)]
-    clauses = [Clause(frozenset({1, 2})), Clause(frozenset({3, 4}))]
+    clauses = [Clause(frozenset({1, 2}), 0), Clause(frozenset({3, 4}), 0)]
     result = grow_cst(root, clauses)
     if result is not None:
         assert result.size == root.size
@@ -325,7 +325,7 @@ def test__grow_cst__root_mirrors_hrse_root():
 def test__grow_cst__root_has_no_parent():
     root = HRSENode(5, 0, None)
     root.children = [HRSENode(2, 1, root), HRSENode(1, 1, root)]
-    clauses = [Clause(frozenset({1, 2})), Clause(frozenset({3, 4}))]
+    clauses = [Clause(frozenset({1, 2}), 0), Clause(frozenset({3, 4}), 0)]
     result = grow_cst(root, clauses)
     if result is not None:
         assert result.parent is None
@@ -335,9 +335,9 @@ def test__grow_cst__asdt_tree_small():
     root = HRSENode.new(3, 4)
     assert root is not None
     clauses = [
-        Clause(frozenset({1, 2})),
-        Clause(frozenset({2, 3})),
-        Clause(frozenset({3, 4})),
+        Clause(frozenset({1, 2}), 0),
+        Clause(frozenset({2, 3}), 0),
+        Clause(frozenset({3, 4}), 0),
     ]
     result = grow_cst(root, clauses)
     assert result is None or isinstance(result, CSTNode)
@@ -351,12 +351,12 @@ def test__grow_cst__asdt_tree_medium():
     root = HRSENode.new(6, 5)
     assert root is not None
     clauses = [
-        Clause(frozenset({1, 2})),
-        Clause(frozenset({2, 3})),
-        Clause(frozenset({3, 4})),
-        Clause(frozenset({4, 5})),
-        Clause(frozenset({5, 6})),
-        Clause(frozenset({1, 6})),
+        Clause(frozenset({1, 2}), 0),
+        Clause(frozenset({2, 3}), 0),
+        Clause(frozenset({3, 4}), 0),
+        Clause(frozenset({4, 5}), 0),
+        Clause(frozenset({5, 6}), 0),
+        Clause(frozenset({1, 6}), 0),
     ]
     result = grow_cst(root, clauses)
     assert result is None or isinstance(result, CSTNode)
@@ -365,7 +365,7 @@ def test__grow_cst__partition_nonempty_when_clauses_fit():
     # A generous budget: root size=6, one leaf child → budget=5, plenty for 2 clauses
     root = HRSENode(6, 0, None)
     root.children = [HRSENode(2, 1, root)]
-    clauses = [Clause(frozenset({1, 2})), Clause(frozenset({3, 4}))]
+    clauses = [Clause(frozenset({1, 2}), 0), Clause(frozenset({3, 4}), 0)]
     result = grow_cst(root, clauses)
     if result is not None:
         assert len(result.partition) > 0
@@ -374,7 +374,7 @@ def test__grow_cst__subsumed_variables_subset_of_clause_vars():
     root = HRSENode(6, 0, None)
     root.children = [HRSENode(2, 1, root)]
     all_vars = {1, 2, 3, 4}
-    clauses = [Clause(frozenset({1, 2})), Clause(frozenset({3, 4}))]
+    clauses = [Clause(frozenset({1, 2}), 0), Clause(frozenset({3, 4}), 0)]
     result = grow_cst(root, clauses)
     if result is not None:
         assert result.subsumed_variables <= all_vars
@@ -387,9 +387,9 @@ def test__grow_cst__multi_level_tree():
     root.children = [mid]
     mid.children  = [leaf]
     clauses = [
-        Clause(frozenset({1, 2})),
-        Clause(frozenset({2, 3})),
-        Clause(frozenset({4, 5})),
+        Clause(frozenset({1, 2}), 0),
+        Clause(frozenset({2, 3}), 0),
+        Clause(frozenset({4, 5}), 0),
     ]
     result = grow_cst(root, clauses)
     assert result is None or isinstance(result, CSTNode)
@@ -404,7 +404,7 @@ def test__grow_cst__larger_asdt_tree():
     import random
     rng = random.Random(0)
     clauses = [
-        Clause(frozenset(rng.sample(range(1, 21), 3)))
+        Clause(frozenset(rng.sample(range(1, 21), 3)), 0)
         for _ in range(10)
     ]
     result = grow_cst(root, clauses)

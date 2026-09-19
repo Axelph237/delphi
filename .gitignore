@@ -5,3 +5,4 @@ pyrefly.toml
 .claude
 .pytest_cache
 .venv
+.vscode
