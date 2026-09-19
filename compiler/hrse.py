@@ -1,6 +1,10 @@
+from itertools import count
 from math import ceil
 from bisect import insort
 
+_hrse_node_id = count()
+def next_hrse_node_id():
+    return next(_hrse_node_id)
 
 MIN_NODE_SIZE = 2
 
@@ -15,6 +19,7 @@ class HRSENode:
     - covered_leaves: The total number of underlying constraint functions implemented by this node.
     - out_deg: The number of submodules contained within this node.
     """
+    id: int
 
     size: int  # s
     depth: int  # d
@@ -32,6 +37,8 @@ class HRSENode:
         
         if depth < 0:
             raise ValueError("HRSE Node must have a non-negative depth.")
+
+        self.id = next_hrse_node_id()
 
         self.size = size
         self.depth = depth

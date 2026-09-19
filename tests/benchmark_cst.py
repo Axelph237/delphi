@@ -26,7 +26,7 @@ def make_cnf(n_vars: int, n_clauses: int, width: int, seed: int = 42) -> list[Cl
     clauses = []
     for _ in range(n_clauses):
         vs = rng.sample(range(1, n_vars + 1), min(width, n_vars))
-        clauses.append(Clause(frozenset(vs)))
+        clauses.append(Clause(frozenset(vs), 0))
     return clauses
 
 
@@ -63,8 +63,8 @@ def bench_sort_clauses(n_vars: int, n_clauses: int, width: int):
     def py_sort():
         c = clauses[:]
         c.sort(key=lambda cl: (
-            sum(len(omap.get(v, set())) - 1 for v in cl.variables),
-            len(cl.variables)
+            sum(len(omap.get(v, set())) - 1 for v in cl.normed_variables),
+            len(cl.normed_variables)
         ))
 
     def np_sort():
@@ -128,7 +128,7 @@ def bench_grow_cst(m: int, k: int, n_vars: int, width: int, n_reps: int = 3):
 
     rng = random.Random(42)
     clauses = [
-        Clause(frozenset(rng.sample(range(1, n_vars + 1), min(width, n_vars))))
+        Clause(frozenset(rng.sample(range(1, n_vars + 1), min(width, n_vars))), 0)
         for _ in range(m)
     ]
 

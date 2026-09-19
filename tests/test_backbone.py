@@ -37,7 +37,9 @@ def validate_tree_structure(node: HRSENode, parent: HRSENode | None = None):
 def test_node_creation():
     node = make_root(3)
 
-    assert vars(node) == {
+    d = vars(node).copy()
+    d.pop('id', None)
+    assert d == {
         'size': 3,
         'depth': 0,
         'complexity': None,
@@ -104,6 +106,7 @@ def compare_trees(n1: HRSENode, n2: HRSENode):
         d = vars(n).copy()
         d.pop('children')
         d.pop('parent')
+        d.pop('id', None)
         return d
 
     n1_attr = attributes(n1)

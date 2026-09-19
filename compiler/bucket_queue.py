@@ -2,23 +2,23 @@ from typing_extensions import Hashable
 
 class BucketQueue[V: Hashable]:
     max_key: int
-    buckets: list[set[V]]
+    buckets: list[dict[V, None]]
     _min_key: int
 
     def __init__(self, max_key: int):
         self.max_key = max_key
-        self.buckets = [set() for _ in range(max_key + 1)]
+        self.buckets = [dict() for _ in range(max_key + 1)]
         self._min_key = max_key + 1  # sentinel: beyond range means queue is empty
 
     def add(self, key: int, element: V):
         """Inserts the element into the specified bucket, ignoring duplicates"""
-        self.buckets[key].add(element)
+        self.buckets[key][element] = None
         if key < self._min_key:
             self._min_key = key
 
     def remove(self, key: int, element: V):
         """Removes the element from the given bucket"""
-        self.buckets[key].discard(element)
+        self.buckets[key].pop(element, None)
 
     def update_key(self, new_key: int, old_key: int, element: V):
         """Removes the element from the given bucket, adding it to the new bucket"""
