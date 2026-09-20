@@ -1,5 +1,3 @@
-"""Tests for compiler/clause_pack.py — targets 100% line coverage."""
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -20,9 +18,7 @@ from compiler.hrse import HRSENode
 from compiler.numpy_context import build_numpy_context
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+# ---------- Helpers ----------
 
 def _safe[T](fn: Callable[[], T | None]) -> T:
     result = fn()
@@ -46,10 +42,9 @@ def _scheduler(size: int, start: int) -> AncillaScheduler:
     return AncillaScheduler(size, start=start)
 
 
-# ---------------------------------------------------------------------------
-# AncillaScheduler — __init__
-# ---------------------------------------------------------------------------
+# ---------- AncillaScheduler — __init__ ----------
 
+# [LTC §VI]
 class TestAncillaSchedulerInit:
     def test__AncillaScheduler__list_input(self):
         s = AncillaScheduler([1, 3, 5])
@@ -76,10 +71,9 @@ class TestAncillaSchedulerInit:
         assert s.free_ancilla == set()
 
 
-# ---------------------------------------------------------------------------
-# AncillaScheduler — available_ancilla property
-# ---------------------------------------------------------------------------
+# ---------- AncillaScheduler — available_ancilla property ----------
 
+# [LTC §VI]
 class TestAvailableAncilla:
     def test__available_ancilla__initial_count(self):
         s = AncillaScheduler(5)
@@ -97,10 +91,9 @@ class TestAvailableAncilla:
         assert s.available_ancilla == 5
 
 
-# ---------------------------------------------------------------------------
-# AncillaScheduler — allocate
-# ---------------------------------------------------------------------------
+# ---------- AncillaScheduler — allocate ----------
 
+# [LTC §VI]
 class TestAllocate:
     def test__allocate__default_one(self):
         s = AncillaScheduler([7])
@@ -144,10 +137,9 @@ class TestAllocate:
         assert s.allocate(4) is None
 
 
-# ---------------------------------------------------------------------------
-# AncillaScheduler — safe_allocate
-# ---------------------------------------------------------------------------
+# ---------- AncillaScheduler — safe_allocate ----------
 
+# [LTC §VI]
 class TestSafeAllocate:
     def test__safe_allocate__success(self):
         s = AncillaScheduler(3)
@@ -170,10 +162,9 @@ class TestSafeAllocate:
         assert result == [42]
 
 
-# ---------------------------------------------------------------------------
-# AncillaScheduler — free
-# ---------------------------------------------------------------------------
+# ---------- AncillaScheduler — free ----------
 
+# [LTC §VI]
 class TestFree:
     def test__free__empty_list_noop(self):
         s = AncillaScheduler(3)
@@ -207,10 +198,9 @@ class TestFree:
         assert result == [5]
 
 
-# ---------------------------------------------------------------------------
-# clause_oracle
-# ---------------------------------------------------------------------------
+# ---------- clause_oracle ----------
 
+# [LTC §V.C]
 class TestClauseOracle:
     def test__clause_oracle__returns_circbox(self):
         c = _clause({1})
@@ -248,13 +238,13 @@ class TestClauseOracle:
         assert cb.n_qubits == 1
 
 
-# ---------------------------------------------------------------------------
-# clause_pack — isolated tests with contiguous register indices
-# ---------------------------------------------------------------------------
+# ---------- clause_pack — isolated tests with contiguous register indices ----------
 
+# [LTC Eq. 26]
 class TestClausePackIsolated:
     """Use contiguous x/w/y register indices to avoid Bug 4."""
 
+    # [LTC Eq. 33]
     def test__clause_pack__single_clause_single_var_no_redundancy(self):
         c = _clause({1}, mask=0)
         batch = Batch({c})
@@ -272,9 +262,10 @@ class TestClausePackIsolated:
         circuit = clause_pack([0, 1], [], [2], batch, ctx)
         assert circuit is not None
 
+    # [LTC Eq. 25]
     def test__clause_pack__two_clauses_shared_variable_with_redundancy(self):
         c1 = _clause({1, 2}, mask=0)
-        c2 = _clause({1, 3}, mask=0)  # x1 shared → redundancy=1
+        c2 = _clause({1, 3}, mask=0)
         batch = Batch({c1, c2})
         assert batch.redundancy == 1
 
@@ -283,6 +274,7 @@ class TestClausePackIsolated:
         circuit = clause_pack([0, 1, 2], [3], [4, 5], batch, ctx)
         assert circuit is not None
 
+    # [LTC Eq. 33]
     def test__clause_pack__insufficient_ancilla_raises_runtime_error(self):
         c = _clause({1}, mask=0)
         batch = Batch({c})
@@ -314,6 +306,7 @@ class TestClausePackIsolated:
         circuit = clause_pack([0, 1], [], [2], batch, ctx)
         assert circuit is not None
 
+    # [LTC Eq. 25]
     def test__clause_pack__three_clauses_all_sharing_one_variable(self):
         # All three clauses share variable 1 → redundancy = 2
         c1 = _clause({1, 2}, mask=0)
@@ -327,6 +320,7 @@ class TestClausePackIsolated:
         circuit = clause_pack([0, 1, 2, 3], [4, 5], [6, 7, 8], batch, ctx)
         assert circuit is not None
 
+    # [LTC §V.C]
     def test__clause_pack__w_register_not_fully_freed_raises(self):
         """Artificially cause the w_scheduler leak check to fire.
 
@@ -342,10 +336,9 @@ class TestClausePackIsolated:
                 clause_pack([0, 1, 2], [3], [4, 5], batch, ctx)
 
 
-# ---------------------------------------------------------------------------
-# node_to_oracle
-# ---------------------------------------------------------------------------
+# ---------- node_to_oracle ----------
 
+# [LTC Alg. 3]
 class TestNodeToOracle:
     def _simple_ctx(self, *clauses):
         return _safe(lambda: build_numpy_context(list(clauses)))
@@ -381,6 +374,7 @@ class TestNodeToOracle:
         with pytest.raises(ValueError, match="is too small"):
             node_to_oracle([0], sched, node, ctx)
 
+    # [LTC §III.C]
     def test__node_to_oracle__leaf_hrse_child_is_skipped(self):
         c = _clause({1}, mask=0)
         ctx = self._simple_ctx(c)
@@ -456,10 +450,9 @@ class TestNodeToOracle:
         assert len(out_reg) == 1
 
 
-# ---------------------------------------------------------------------------
-# cst_to_oracle
-# ---------------------------------------------------------------------------
+# ---------- cst_to_oracle ----------
 
+# [LTC Alg. 3]
 class TestCstToOracle:
     def test__cst_to_oracle__root_size_zero_raises_value_error(self):
         hrse = HRSENode(0, 0, None)
@@ -494,6 +487,7 @@ class TestCstToOracle:
         assert x_reg == [0, 1]
         assert len(out_reg) == 1
 
+    # [LTC §VI]
     def test__cst_to_oracle__ancilla_leak_raises_runtime_error(self, monkeypatch):
         """If node_to_oracle leaks allocations the RuntimeError check fires."""
         c = _clause({1}, mask=0)

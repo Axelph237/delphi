@@ -19,9 +19,10 @@ type omap = dict[variable, set[Clause]]
 
 # ---------- Data Types ----------
 
+# [LTC §II.A]
 @dataclass(frozen=True)
 class Clause:
-    normed_variables: tuple[variable, ...]
+    normed_variables: tuple[variable, ...]  # $\boldsymbol{\hat{C}_i}$
     variable_polarity_mask: int
 
     def __init__(self, variables: Set[variable], polarity_mask: int):
@@ -29,6 +30,7 @@ class Clause:
         object.__setattr__(self, 'variable_polarity_mask', polarity_mask)
 
 
+# [LTC §III.A]
 @dataclass
 class Batch:
     r"""A set of clauses evaluated in parallel within one time step.
@@ -39,7 +41,7 @@ class Batch:
     """
     _variables: dict[variable, int]
     _clauses: set[Clause]
-    redundancy: int
+    redundancy: int  # [LTC Eq. 11] $\boldsymbol{R(\mathcal{B})}$
 
     def __init__(self, clauses: Set[Clause] = frozenset()):
         self._clauses = set()
@@ -48,6 +50,7 @@ class Batch:
         for c in clauses:
             self.add_clause(c)
 
+    # [LTC Eq. 11]
     def add_clause(self, clause: Clause):
         if clause in self._clauses:
             return
@@ -85,8 +88,9 @@ class Batch:
         return frozenset(self._clauses)
 
 
+# [LTC §III.C, Def. 2]
 class CSTNode(HRSENode):
-    partition: list[Batch]
+    partition: list[Batch]  # [LTC Eq. 9] $\boldsymbol{\Pi(v)}$
     subsumed_variables: set[variable]
     max_clause_width: int
 
@@ -126,6 +130,7 @@ class CSTNode(HRSENode):
 
 # ---------- Occurrence Map & Clause Sorting ----------
 
+# [LTC §IV.B]
 def build_occurence_list(clauses: list[Clause]) -> omap:
     r"""Build the occurrence map v ↦ {C_i, C_j, ...}"""
     vars_to_clauses: omap = dict()
@@ -135,22 +140,26 @@ def build_occurence_list(clauses: list[Clause]) -> omap:
     return vars_to_clauses
 
 
+# [LTC §IV.B]
 def freq(z: variable, omap: omap) -> int:
     """Number of clauses in `omap` that contain variable z."""
     clauses = omap.get(z)
     return len(clauses) if clauses is not None else 0
 
 
+# [LTC Eq. 20]
 def conflict_deg(C: Clause, omap: omap) -> int:
     r"""Conflict degree d_i = Σ_{z∈Ĉ_i}(freq(z) − 1)."""
     return sum((freq(v, omap) - 1 for v in C.normed_variables), 0)
 
 
+# [LTC Eq. 21]
 def redundancy_impact(C: Clause, var_set: Set[variable]) -> int:
     r"""Number of variables in C already present in `var_set` (the δ_i overlap count)."""
     return sum(1 for v in C.normed_variables if v in var_set)
 
 
+# [LTC §IV.B]
 def sort_clauses(clauses: list[Clause], omap: omap, ctx: NumpyContext | None = None) -> Iterator[Clause]:
     r"""Sort clauses ascending by (conflict_degree, clause_length, insertion_order).
 
@@ -196,12 +205,14 @@ def sort_clauses(clauses: list[Clause], omap: omap, ctx: NumpyContext | None = N
 
 # ---------- SeedGrow Algorithm ----------
 
+# [LTC Eq. 10]
 def is_feasible(batch: Batch, partition: list[Batch], ancilla_budget: int) -> bool:
-    r"""True when Σ_{h≤j}|β_h| + R(β_j) ≤ a_q (paper eq. 10)."""
+    r"""True when Σ_{h≤j}|β_h| + R(β_j) ≤ a_q."""
     occupied_ancilla = sum(len(b._clauses) for b in partition)
     return occupied_ancilla + batch.redundancy <= ancilla_budget
 
 
+# [LTC Alg. 2]
 def grow_block(
     budget: int,
     unassigned_clauses: list[Clause],
@@ -272,6 +283,7 @@ def grow_block(
     return batch
 
 
+# [LTC Alg. 1, line 14]
 def merge_adjacent(partition: list[Batch], budget: int) -> list[Batch]:
     """Merge consecutive batches whenever the merged batch remains feasible.
 
@@ -325,6 +337,7 @@ def merge_adjacent(partition: list[Batch], budget: int) -> list[Batch]:
     return new_partition
 
 
+# [LTC Alg. 1]
 def seed_grow(
     node: HRSENode,
     leaf_clauses: list[Clause],
@@ -365,6 +378,7 @@ def seed_grow(
 
 # ---------- Tree Construction ----------
 
+# [LTC §III.D]
 def grow_cst(root: HRSENode, clauses: list[Clause]) -> CSTNode | None:
     r"""Build a CST for the HRSE tree rooted at `root`.
 
@@ -387,6 +401,7 @@ def grow_cst(root: HRSENode, clauses: list[Clause]) -> CSTNode | None:
     return _build_cst_subtree(root, None, leaf_clause_map, var_occurences, ctx)
 
 
+# [LTC §III.D, step 2]
 def _assign_clauses_to_leaves(root: HRSENode, sorted_clauses: list[Clause]) -> dict[int, Clause]:
     """Map each HRSE leaf to one clause via pre-order DFS, returning id(leaf) → Clause.
 
@@ -409,6 +424,7 @@ def _assign_clauses_to_leaves(root: HRSENode, sorted_clauses: list[Clause]) -> d
     return result
 
 
+# [LTC §III.D, step 3]
 def _build_cst_subtree(
     hrse_node: HRSENode,
     parent_cst: CSTNode | None,

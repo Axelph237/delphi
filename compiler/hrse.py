@@ -8,6 +8,7 @@ def next_hrse_node_id():
 
 MIN_NODE_SIZE = 2
 
+# [MDRO §III.A, Def. 1]
 class HRSENode:
     """
     A single computational unit in an HRSE Tree.
@@ -21,11 +22,11 @@ class HRSENode:
     """
     id: int
 
-    size: int  # s
-    depth: int  # d
-    complexity: int | None  # c
-    covered_leaves: int | None  # l
-    out_deg: int  # k
+    size: int  # [MDRO Eq. 1] $s(v)$
+    depth: int  # [MDRO Eq. 1] $d(v)$
+    complexity: int | None  # [MDRO Eq. 1] $c(v)$
+    covered_leaves: int | None  # [MDRO Eq. 1] $\ell(v)$
+    out_deg: int  # [MDRO Eq. 1] $\kappa(v)$
 
     parent: HRSENode | None
     children: list[HRSENode]
@@ -54,6 +55,7 @@ class HRSENode:
         return asdt(num_clauses, budget)
 
 
+    # [MDRO Eqs. 2-4]
     def add_child(self, child: HRSENode):
         """
         Adds child node to this node, updating observers and attributes
@@ -62,15 +64,15 @@ class HRSENode:
         """
 
         # Check saturation
-        if self.is_saturated():
+        if self.is_saturated():  # [MDRO Eq. 4]
             raise ValueError(f"Node of size {self.size}, depth {self.depth} is saturated, cannot add child")
       
         # Validate monotonicity
-        if child.size >= self.size:
+        if child.size >= self.size:  # [MDRO Eq. 2]
             raise ValueError("Child size must be less than parent size")
 
         # Validate distinct sibling sizes
-        if child.size in [n.size for n in self.children]:
+        if child.size in [n.size for n in self.children]:  # [MDRO Eq. 3]
             raise ValueError("Child size must be distinct from siblings")
 
         # Prevent repeated children
@@ -83,9 +85,11 @@ class HRSENode:
 
         return self.is_candidate()
 
+    # [MDRO Eq. 4]
     def is_saturated(self):
         return self.out_deg == self.size - 1 or self.size <= MIN_NODE_SIZE
 
+    # [MDRO Eq. 4]
     def is_candidate(self):
         return not self.is_saturated()
 
@@ -93,6 +97,7 @@ class HRSENode:
         return self.out_deg == 0
 
 
+# [MDRO §IV.B]
 def max_covered_leaves(k: int):
     """
     Returns the maximum number of constraint functions that can be implemented by an HRSE tree with k auxiliary qubits.
@@ -132,6 +137,7 @@ def max_covered_leaves(k: int):
     return ceil(3 * (2 ** (k - 4)))
 
 
+# [MDRO Alg. 1]
 def asdt(m: int, k: int):
     """
     Creates an optimal HRSE tree $T_k(m)$ using the ASDT algorithm
@@ -150,7 +156,7 @@ def asdt(m: int, k: int):
     if m > max_covered_leaves(k):
         raise ValueError(f"Cannot implement more than {max_covered_leaves(k)} clauses with {k} auxiliary qubits")
 
-    asdt_compare = lambda n: (n.depth, -n.size)
+    asdt_compare = lambda n: (n.depth, -n.size)  # [MDRO §IV.A] strategy 1 (min-depth), strategy 2 (max-size)
 
     nodes: list[HRSENode] = []
     edges: list[tuple[HRSENode, HRSENode]] = []

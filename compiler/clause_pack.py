@@ -7,6 +7,7 @@ from pytket import Circuit
 from pytket.circuit import CircBox, OpType
 
 
+# [LTC §VI]
 class AncillaScheduler:
     free_ancilla: set[int]
     allocated_ancilla: set[int]
@@ -41,6 +42,7 @@ class AncillaScheduler:
             self.free_ancilla.add(a)
 
 
+# [LTC Alg. 3]
 def cst_to_oracle(x_register_size: int, root: CSTNode, ctx: NumpyContext) -> tuple[Circuit, list[int], list[int]]:
     r"""
     Converts a feasible CST $\boldsymbol{\mathcal{T}}$ into a unitary $\boldsymbol{U_\mathcal{T}}$ that implements the oracle for the corresponding SAT problem.
@@ -68,6 +70,7 @@ def cst_to_oracle(x_register_size: int, root: CSTNode, ctx: NumpyContext) -> tup
     return cst_oracle, x_register, cst_output_reg
 
 
+# [LTC §V.C]
 def clause_oracle(clause: Clause) -> CircBox:
     clause_circuit = Circuit(len(clause.normed_variables) + 1)
 
@@ -81,6 +84,7 @@ def clause_oracle(clause: Clause) -> CircBox:
     return CircBox(clause_circuit)
 
 
+# [LTC §V, Eq. 26]
 def clause_pack(
         x_register: list[int],
         w_register: list[int],
@@ -103,7 +107,7 @@ def clause_pack(
         y_scheduler = AncillaScheduler(y_register)
 
         for clause in batch.clauses:
-            # Stage 1. Variable Replication $\boldsymbol{U_{\text{rep}}^\dagger}$
+            # Stage 1. Variable Replication $\boldsymbol{U_{\text{rep}}^\dagger}$ [LTC §V.B, Eq. 27]
             variable_wires = []
             for v in clause.normed_variables:
                 if v not in variable_allocations:
@@ -117,12 +121,12 @@ def clause_pack(
 
                 variable_wires.append(on_wire)
 
-            # Stage 2. Parallel Clause Evaluation $\boldsymbol{U_{\text{eval}}}$
+            # Stage 2. Parallel Clause Evaluation $\boldsymbol{U_{\text{eval}}}$ [LTC Eq. 30]
             clause_circuit = clause_oracle(clause)
             [output_wire] = y_scheduler.safe_allocate()
             clause_pack_circuit.add_circbox(clause_circuit, variable_wires + [output_wire])
 
-        # Stage 3. Reverse Replication $\boldsymbol{U_{\text{rep}}}$
+        # Stage 3. Reverse Replication $\boldsymbol{U_{\text{rep}}}$ [LTC §V.C]
         for var, allocations in variable_allocations.items():
             if len(allocations) <= 1:
                 continue
@@ -137,6 +141,7 @@ def clause_pack(
         return clause_pack_circuit
 
 
+# [LTC §VI Alg. 3]
 def node_to_oracle(x_register: list[int], scheduler: AncillaScheduler, node: CSTNode, ctx: NumpyContext) -> tuple[Circuit, list[int]]:
 
     node_circuit = Circuit(len(x_register) + node.size)
@@ -145,7 +150,7 @@ def node_to_oracle(x_register: list[int], scheduler: AncillaScheduler, node: CST
     if node_output_register is None:
         raise ValueError(f"Node {node} has no allocable ancilla")
 
-    # 1. Partition (ClausePack) Evaluation
+    # 1. Partition (ClausePack) Evaluation [LTC Alg. 3, lines 4-6]
     cp_oracles: list[Circuit] = []
     cp_oracles_out_registers: list[list[int]] = []
     for batch in node.partition:
@@ -160,7 +165,7 @@ def node_to_oracle(x_register: list[int], scheduler: AncillaScheduler, node: CST
         cp_oracles.append(cp)
         node_circuit.append(cp)
 
-    # 2. Child Evaluation
+    # 2. Child Evaluation [LTC Alg. 3, lines 11-15]
     child_oracles = []
     child_oracle_out_registers = []
     for child in node.children:
@@ -173,14 +178,14 @@ def node_to_oracle(x_register: list[int], scheduler: AncillaScheduler, node: CST
         child_oracle_out_registers.append(output_register)
         node_circuit.append(child_oracle)
 
-    # 3. Multiplex outputs
+    # 3. Multiplex outputs [LTC Alg. 3, line 17]
     eval_output_registers = sum((out_regs for out_regs in
         cp_oracles_out_registers + child_oracle_out_registers
     ), []) # $\boldsymbol{|Y_o\rangle}$
 
     node_circuit.add_gate(OpType.CnX, eval_output_registers + node_output_register)
 
-    # 4. Free Child Evaluations
+    # 4. Free Child Evaluations [LTC Alg. 3, lines 18-20]
     for co, co_out_regs in zip(child_oracles, child_oracle_out_registers):
         node_circuit.append(co.dagger())
         scheduler.free(co_out_regs)
