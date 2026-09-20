@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Set
-from ..compiler.cst import Clause
+from delphi.compiler.cst import Clause
 
 # ---------------------------------------------------------------------------
 # Types

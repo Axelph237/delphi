@@ -1,5 +1,5 @@
 from collections.abc import Generator
-from ..compiler.cst import Clause
+from delphi.compiler.cst import Clause
 
 from typing import TYPE_CHECKING
 
