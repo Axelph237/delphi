@@ -1,4 +1,4 @@
-ltc_paper.*
+*_paper.*
 pyrefly.toml
 **/__pycache__/*
 .git
@@ -6,3 +6,5 @@ pyrefly.toml
 .pytest_cache
 .venv
 .vscode
+.env
+outputs/*
