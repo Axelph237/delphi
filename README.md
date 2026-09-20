@@ -63,10 +63,10 @@ A `NumpyContext` (built once per `grow_cst` call) holds all pre-computed structu
 | Step | Status |
 |---|---|
 | User-LLM interaction for defining clauses | planned |
-| Conversion of high-level language to CNF | planned |
+| Conversion of high-level language to CNF | **complete** ✅ |
 | HRSE tree synthesis (ASDT algorithm) | **complete** ✅ |
 | CST construction (SeedGrow heuristic) | **complete** ✅ |
-| Mapping CST to optimized oracle circuit | planned |
+| Mapping CST to optimized oracle circuit | **complete** ✅ |
 
 ## Getting started
 
