@@ -1,5 +1,5 @@
 import pytest
-from compiler.hrse import HRSENode, asdt
+from delphi.compiler.hrse import HRSENode, asdt
 
 make_root = lambda s: HRSENode(size=s, depth=0, parent=None)
 

@@ -6,16 +6,16 @@ from unittest.mock import patch
 from pytket import Circuit
 from pytket.circuit import CircBox
 
-from compiler.clause_pack import (
+from delphi.compiler.clause_pack import (
     AncillaScheduler,
     clause_oracle,
     clause_pack,
     node_to_oracle,
     cst_to_oracle,
 )
-from compiler.cst import Clause, Batch, CSTNode
-from compiler.hrse import HRSENode
-from compiler.numpy_context import build_numpy_context
+from delphi.compiler.cst import Clause, Batch, CSTNode
+from delphi.compiler.hrse import HRSENode
+from delphi.compiler.numpy_context import build_numpy_context
 
 
 # ---------- Helpers ----------

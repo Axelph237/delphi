@@ -1,5 +1,5 @@
-from compiler.cst import *
-from compiler.hrse import HRSENode
+from delphi.compiler.cst import *
+from delphi.compiler.hrse import HRSENode
 
 # [LTC Eq. 11]
 def test__Batch():
@@ -783,7 +783,7 @@ def test__merge_adjacent__budget_prevents_merge_with_redundancy():
 def test__build_cst_subtree__unmapped_leaf_returns_none():
     # When _build_cst_subtree is called on a leaf HRSENode that has no entry
     # in leaf_clause_map, it returns None (line 429 in cst.py).
-    from compiler.cst import _build_cst_subtree
+    from delphi.compiler.cst import _build_cst_subtree
     leaf = HRSENode(2, 0, None)  # size=2 → leaf (no children)
     result = _build_cst_subtree(leaf, None, {}, {}, None)
     assert result is None

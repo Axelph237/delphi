@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from compiler.hrse import HRSENode
-from compiler.cst import CSTNode, Clause, Batch
-from compiler.numpy_context import NumpyContext
+from .hrse import HRSENode
+from .cst import CSTNode, Clause, Batch
+from .numpy_context import NumpyContext
 from pytket import Circuit
 from pytket.circuit import CircBox, OpType
 

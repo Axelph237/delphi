@@ -8,7 +8,7 @@ from typing_extensions import Set
 
 from .bucket_queue import BucketQueue
 from .numpy_context import NumpyContext, build_numpy_context
-from compiler.hrse import HRSENode
+from .hrse import HRSENode
 
 
 # ---------- Type Aliases ----------
