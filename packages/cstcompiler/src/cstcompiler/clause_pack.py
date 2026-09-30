@@ -55,13 +55,16 @@ def _mcx(circuit: QuantumCircuit, controls: list[int], target: int):
 
 
 # [LTC Alg. 3]
-def cst_to_oracle(x_register_size: int, root: CSTNode, ctx: NumpyContext) -> tuple[QuantumCircuit, list[int], list[int]]:
+def cst_to_oracle(root: CSTNode, ctx: NumpyContext) -> tuple[QuantumCircuit, list[int], list[int]]:
     r"""
     Converts a feasible CST $\boldsymbol{\mathcal{T}}$ into a unitary $\boldsymbol{U_\mathcal{T}}$ that implements the oracle for the corresponding SAT problem.
 
     The root's target $t_{v_0}$ is the SAT-oracle target, so the circuit maps
     $|x\rangle|c\rangle|0\rangle \mapsto |x\rangle|c \oplus f(x)\rangle|0\rangle$.
+
+    Returns the oracle, its x register, and output register.
     """
+    x_register_size = ctx.n_vars
 
     scheduler = AncillaScheduler(root.size, start=x_register_size)
     x_register = list(range(0, x_register_size))

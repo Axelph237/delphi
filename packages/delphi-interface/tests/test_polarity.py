@@ -36,9 +36,11 @@ def _marked_assignments(clauses: list[Clause]) -> set[tuple[int, ...]]:
     ctx = build_numpy_context(clauses)
     hrse_root = HRSENode.new(len(clauses), 4)
     assert ctx is not None and hrse_root is not None
-    root = grow_cst(hrse_root, list(clauses))
+    grow_result = grow_cst(hrse_root, list(clauses))
+    assert grow_result is not None
+    root, _ = grow_result
     assert root is not None
-    circuit, _, [target] = cst_to_oracle(ctx.n_vars, root, ctx)
+    circuit, _, [target] = cst_to_oracle(root, ctx)
 
     marked = set()
     for bits in itertools.product([0, 1], repeat=ctx.n_vars):

@@ -355,7 +355,8 @@ def test__grow_cst__returns_cst_node_or_none():
     root = HRSENode(5, 0, None)
     root.children = [HRSENode(2, 1, root), HRSENode(1, 1, root)]
     clauses = [Clause(frozenset({1, 2}), 0), Clause(frozenset({3, 4}), 0)]
-    result = grow_cst(root, clauses)
+    grow_result = grow_cst(root, clauses)
+    result = grow_result[0] if grow_result is not None else None
     assert result is None or isinstance(result, CSTNode)
 
 # [LTC §III.D]
@@ -363,7 +364,8 @@ def test__grow_cst__root_mirrors_hrse_root():
     root = HRSENode(5, 0, None)
     root.children = [HRSENode(2, 1, root), HRSENode(1, 1, root)]
     clauses = [Clause(frozenset({1, 2}), 0), Clause(frozenset({3, 4}), 0)]
-    result = grow_cst(root, clauses)
+    grow_result = grow_cst(root, clauses)
+    result = grow_result[0] if grow_result is not None else None
     if result is not None:
         assert result.size == root.size
         assert result.depth == root.depth
@@ -373,7 +375,8 @@ def test__grow_cst__root_has_no_parent():
     root = HRSENode(5, 0, None)
     root.children = [HRSENode(2, 1, root), HRSENode(1, 1, root)]
     clauses = [Clause(frozenset({1, 2}), 0), Clause(frozenset({3, 4}), 0)]
-    result = grow_cst(root, clauses)
+    grow_result = grow_cst(root, clauses)
+    result = grow_result[0] if grow_result is not None else None
     if result is not None:
         assert result.parent is None
 
@@ -387,7 +390,8 @@ def test__grow_cst__asdt_tree_small():
         Clause(frozenset({2, 3}), 0),
         Clause(frozenset({3, 4}), 0),
     ]
-    result = grow_cst(root, clauses)
+    grow_result = grow_cst(root, clauses)
+    result = grow_result[0] if grow_result is not None else None
     assert result is None or isinstance(result, CSTNode)
     if result is not None:
         assert result.size == root.size
@@ -407,7 +411,8 @@ def test__grow_cst__asdt_tree_medium():
         Clause(frozenset({5, 6}), 0),
         Clause(frozenset({1, 6}), 0),
     ]
-    result = grow_cst(root, clauses)
+    grow_result = grow_cst(root, clauses)
+    result = grow_result[0] if grow_result is not None else None
     assert result is None or isinstance(result, CSTNode)
 
 # [LTC §III.D]
@@ -416,7 +421,8 @@ def test__grow_cst__partition_nonempty_when_clauses_fit():
     root = HRSENode(6, 0, None)
     root.children = [HRSENode(2, 1, root)]
     clauses = [Clause(frozenset({1, 2}), 0), Clause(frozenset({3, 4}), 0)]
-    result = grow_cst(root, clauses)
+    grow_result = grow_cst(root, clauses)
+    result = grow_result[0] if grow_result is not None else None
     if result is not None:
         assert len(result.partition) > 0
 
@@ -426,7 +432,8 @@ def test__grow_cst__subsumed_variables_subset_of_clause_vars():
     root.children = [HRSENode(2, 1, root)]
     all_vars = {1, 2, 3, 4}
     clauses = [Clause(frozenset({1, 2}), 0), Clause(frozenset({3, 4}), 0)]
-    result = grow_cst(root, clauses)
+    grow_result = grow_cst(root, clauses)
+    result = grow_result[0] if grow_result is not None else None
     if result is not None:
         assert result.subsumed_variables <= all_vars
 
@@ -443,7 +450,8 @@ def test__grow_cst__multi_level_tree():
         Clause(frozenset({2, 3}), 0),
         Clause(frozenset({4, 5}), 0),
     ]
-    result = grow_cst(root, clauses)
+    grow_result = grow_cst(root, clauses)
+    result = grow_result[0] if grow_result is not None else None
     assert result is None or isinstance(result, CSTNode)
     if result is not None:
         assert result.size == root.size
@@ -460,7 +468,8 @@ def test__grow_cst__larger_asdt_tree():
         Clause(frozenset(rng.sample(range(1, 21), 3)), 0)
         for _ in range(10)
     ]
-    result = grow_cst(root, clauses)
+    grow_result = grow_cst(root, clauses)
+    result = grow_result[0] if grow_result is not None else None
     assert result is None or isinstance(result, CSTNode)
 
 

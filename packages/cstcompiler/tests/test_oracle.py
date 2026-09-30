@@ -35,9 +35,11 @@ def test__cst_to_oracle__computes_f_and_restores_every_qubit(n, k, m, seed):
     for budget in _budgets(m):
         hrse_root = HRSENode.new(m, budget)
         assert hrse_root is not None
-        root = grow_cst(hrse_root, list(clauses))
+        grow_result = grow_cst(hrse_root, list(clauses))
+        assert grow_result is not None
+        root, _ = grow_result
         assert root is not None
-        circuit, x_register, [target] = cst_to_oracle(ctx.n_vars, root, ctx)
+        circuit, x_register, [target] = cst_to_oracle(root, ctx)
         assert circuit.num_qubits == ctx.n_vars + budget
 
         for c in (0, all_ones):

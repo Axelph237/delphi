@@ -492,7 +492,7 @@ class TestCstToOracle:
         node.set_partition([])
         ctx = _safe(lambda: build_numpy_context([_clause({1})]))
         with pytest.raises(ValueError, match="has no allocable ancilla"):
-            cst_to_oracle(1, node, ctx)
+            cst_to_oracle(node, ctx)
 
     def test__cst_to_oracle__simple_single_variable_formula(self):
         c = _clause({1}, mask=0)
@@ -502,7 +502,7 @@ class TestCstToOracle:
         root = CSTNode(hrse, None)
         root.set_partition([Batch({c})])
 
-        cst_circuit, x_reg, out_reg = cst_to_oracle(1, root, ctx)
+        cst_circuit, x_reg, out_reg = cst_to_oracle(root, ctx)
         assert cst_circuit is not None
         assert x_reg == [0]
         assert len(out_reg) == 1
@@ -515,7 +515,7 @@ class TestCstToOracle:
         root = CSTNode(hrse, None)
         root.set_partition([Batch({c})])
 
-        cst_circuit, x_reg, out_reg = cst_to_oracle(2, root, ctx)
+        cst_circuit, x_reg, out_reg = cst_to_oracle(root, ctx)
         assert x_reg == [0, 1]
         assert len(out_reg) == 1
 
@@ -538,7 +538,7 @@ class TestCstToOracle:
 
         monkeypatch.setattr('cstcompiler.clause_pack.node_to_oracle', _leaking_node_to_oracle)
         with pytest.raises(RuntimeError, match="Failed to fully free"):
-            cst_to_oracle(1, root, ctx)
+            cst_to_oracle(root, ctx)
 
     def test__cst_to_oracle__negative_polarity_clause(self):
         c = _clause({1, 2}, mask=0b01)  # ¬x1 ∨ x2
@@ -548,5 +548,5 @@ class TestCstToOracle:
         root = CSTNode(hrse, None)
         root.set_partition([Batch({c})])
 
-        cst_circuit, x_reg, out_reg = cst_to_oracle(2, root, ctx)
+        cst_circuit, x_reg, out_reg = cst_to_oracle(root, ctx)
         assert cst_circuit is not None

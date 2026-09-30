@@ -91,9 +91,11 @@ def oracle_circuit(n: int, budget: int, seed: int) -> QuantumCircuit:
     ctx = build_numpy_context(clauses)
     hrse_root = HRSENode.new(m, budget)
     assert ctx is not None and hrse_root is not None
-    root = grow_cst(hrse_root, list(clauses))
+    grow_result = grow_cst(hrse_root, list(clauses))
+    assert grow_result is not None
+    root, _ = grow_result
     assert root is not None
-    circuit, _, _ = cst_to_oracle(ctx.n_vars, root, ctx)
+    circuit, _, _ = cst_to_oracle(root, ctx)
     return circuit
 
 

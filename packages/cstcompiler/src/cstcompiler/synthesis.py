@@ -370,7 +370,7 @@ def seed_grow(
 # ---------- Tree Construction ----------
 
 # [LTC §III.D]
-def grow_cst(root: HRSENode, clauses: list[Clause]) -> CSTNode | None:
+def grow_cst(root: HRSENode, clauses: list[Clause]) -> None | tuple[CSTNode | None, NumpyContext | None]:
     r"""Build a CST for the HRSE tree rooted at `root`.
 
     Each HRSE leaf receives exactly one clause; each internal node clusters its
@@ -389,7 +389,7 @@ def grow_cst(root: HRSENode, clauses: list[Clause]) -> CSTNode | None:
     sort_clauses(clauses, var_occurences, ctx)
 
     leaf_clause_map = _assign_clauses_to_leaves(root, clauses)
-    return _build_cst_subtree(root, None, leaf_clause_map, var_occurences, ctx)
+    return _build_cst_subtree(root, None, leaf_clause_map, var_occurences, ctx), ctx
 
 
 # [LTC §III.D, step 2]
