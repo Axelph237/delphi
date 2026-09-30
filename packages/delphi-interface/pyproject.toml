@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "delphi-interface"
+version = "0.1.0"
+description = "LLM interface that turns natural-language search problems into CNF clauses for cstcompiler"
+requires-python = ">=3.12"
+dependencies = [
+    "cstcompiler>=0.1,<0.2",
+    "cnfc",
+    "instructor",
+    "python-dotenv",
+]
+
+[tool.uv.sources]
+cstcompiler = { workspace = true }
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

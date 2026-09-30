@@ -22,22 +22,22 @@ natural language
        │  compiler
        ├── HRSE tree synthesis   (hrse.py)
        ├── CST construction      (cst.py)
-       └── oracle mapping        (planned)
+       └── oracle mapping        (clause_pack.py, Qiskit)
 ```
 
-### HRSE Tree (`compiler/hrse.py`)
+### HRSE Tree (`packages/cstcompiler/src/cstcompiler/hrse.py`)
 
 A **Hierarchical Recursive Synthesis-Evaluation (HRSE) tree** is the structural blueprint for the oracle. Each node represents a module that uses a fixed number of ancilla qubits (`size`). Child nodes are strictly smaller, enabling qubit reuse across levels.
 
 Trees are synthesized by the **ASDT algorithm** (`asdt`), which produces an optimal tree for `m` clauses within a budget of `k` ancilla qubits. The maximum clause capacity for a given `k` is `ceil(3 × 2^(k−4))`.
 
 ```python
-from compiler.hrse import HRSENode
+from cstcompiler.hrse import HRSENode
 
 root = HRSENode.new(m=10, k=6)  # tree for 10 clauses, 6 ancilla qubits
 ```
 
-### CST (`compiler/cst.py`)
+### CST (`packages/cstcompiler/src/cstcompiler/cst.py`)
 
 A **Clustered Synthesis Tree (CST)** mirrors the HRSE tree and assigns a *partition* of clause batches to each node. Batches are built greedily by the **SeedGrow heuristic**:
 
@@ -70,20 +70,32 @@ A `NumpyContext` (built once per `grow_cst` call) holds all pre-computed structu
 
 ## Getting started
 
+The repository holds two packages under `packages/`, each with its own git repository:
+
+- `cstcompiler` holds the compiler (HRSE trees, CST construction, oracle mapping).
+- `delphi-interface` (imported as `delphi_interface`) holds the LLM interface and depends on `cstcompiler`.
+
+The repository root is a [uv](https://docs.astral.sh/uv/) workspace containing both packages.
+
 ```bash
-# Install dependencies (Python 3.12+, numpy)
-pip install numpy pytest
+# Create .venv with both packages installed in editable mode.
+# Run this from the repository root. Inside a package, uv sync removes the other package.
+uv sync
 
-# Run the test suite
-pytest tests/
+# Run the test suites
+(cd packages/cstcompiler && uv run pytest)
+(cd packages/delphi-interface && uv run pytest)
 
-# Run performance benchmarks
-python -m tests.benchmark_cst
+# Run performance benchmarks (from packages/cstcompiler)
+uv run python -m tests.benchmark_cst
+
+# Compare oracle Clifford+T depth with the LTC paper's Table III (from packages/cstcompiler)
+uv run python -m tests.benchmark_oracle
 ```
 
 ```python
-from compiler.hrse import HRSENode
-from compiler.cst import Clause, grow_cst
+from cstcompiler.hrse import HRSENode
+from cstcompiler.cst import Clause, grow_cst
 
 root = HRSENode.new(m=10, k=6)
 clauses = [Clause(frozenset(vars)) for vars in [...]]  # your CNF clauses

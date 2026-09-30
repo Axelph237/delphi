@@ -1,21 +1,22 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import math
 import pytest
 from unittest.mock import patch
-from pytket import Circuit
-from pytket.circuit import CircBox
+from qiskit import QuantumCircuit
 
-from delphi.compiler.clause_pack import (
+from cstcompiler.clause_pack import (
     AncillaScheduler,
     clause_oracle,
+    fan_out,
     clause_pack,
     node_to_oracle,
     cst_to_oracle,
 )
-from delphi.compiler.cst import Clause, Batch, CSTNode
-from delphi.compiler.hrse import HRSENode
-from delphi.compiler.numpy_context import build_numpy_context
+from cstcompiler.cst import Clause, Batch, CSTNode
+from cstcompiler.backbone import HRSENode
+from cstcompiler.numpy_context import build_numpy_context
 
 
 # ---------- Helpers ----------
@@ -202,40 +203,58 @@ class TestFree:
 
 # [LTC §V.C]
 class TestClauseOracle:
-    def test__clause_oracle__returns_circbox(self):
-        c = _clause({1})
-        assert isinstance(clause_oracle(c), CircBox)
+    def test__clause_oracle__returns_circuit(self):
+        c = _clause({1}, mask=0)
+        assert isinstance(clause_oracle(c), QuantumCircuit)
 
     def test__clause_oracle__single_var_positive_polarity(self):
         c = _clause({1}, mask=0)
         cb = clause_oracle(c)
-        assert cb.n_qubits == 2  # 1 var + 1 output
+        assert cb.num_qubits == 2  # 1 var + 1 output
 
     def test__clause_oracle__single_var_negative_polarity(self):
         c = _clause({1}, mask=1)  # bit 0 set → x1 negated
         cb = clause_oracle(c)
-        assert cb.n_qubits == 2
+        assert cb.num_qubits == 2
 
     def test__clause_oracle__two_vars_mixed_polarity(self):
         c = _clause({1, 2}, mask=0b01)  # ¬x1, x2
         cb = clause_oracle(c)
-        assert cb.n_qubits == 3
+        assert cb.num_qubits == 3
 
     def test__clause_oracle__three_vars_all_positive(self):
         c = _clause({1, 3, 5}, mask=0)
         cb = clause_oracle(c)
-        assert cb.n_qubits == 4  # 3 vars + 1 output
+        assert cb.num_qubits == 4  # 3 vars + 1 output
 
     def test__clause_oracle__all_negative_polarity(self):
         c = _clause({1, 2, 3}, mask=0b111)
         cb = clause_oracle(c)
-        assert cb.n_qubits == 4
+        assert cb.num_qubits == 4
 
     def test__clause_oracle__empty_clause(self):
-        # normed_variables = (), circuit has 1 qubit, CnX on 1 qubit = X
+        # normed_variables = (), circuit has 1 qubit; the empty clause is false, so the block is X·X
         c = _clause(set(), mask=0)
         cb = clause_oracle(c)
-        assert cb.n_qubits == 1
+        assert cb.num_qubits == 1
+
+
+# ---------- fan_out ----------
+
+# [LTC Eq. 29]
+class TestFanOut:
+    @pytest.mark.parametrize("copies", [1, 2, 3, 4, 7, 8, 9, 31])
+    def test__fan_out__depth_is_ceil_log2_of_total_copies(self, copies):
+        gates = fan_out(0, list(range(1, copies + 1)))
+        circuit = QuantumCircuit(copies + 1)
+        for control, target in gates:
+            circuit.cx(control, target)
+        assert len(gates) == copies
+        assert sorted(target for _, target in gates) == list(range(1, copies + 1))
+        assert circuit.depth() == math.ceil(math.log2(copies + 1))
+
+    def test__fan_out__no_targets(self):
+        assert fan_out(0, []) == []
 
 
 # ---------- clause_pack — isolated tests with contiguous register indices ----------
@@ -319,6 +338,19 @@ class TestClausePackIsolated:
         # 4 variables → x=[0,1,2,3]; 2 w qubits; 3 y qubits
         circuit = clause_pack([0, 1, 2, 3], [4, 5], [6, 7, 8], batch, ctx)
         assert circuit is not None
+
+    # [LTC Fig. 3, Eqs. 32-35]
+    def test__clause_pack__paper_example_meets_depth_and_ancilla_bounds(self):
+        # Four clauses over {x1, x2, x3}: k_z = 4 for every variable, so R = 9 and S_CP = 13
+        clauses = [_clause({1, 2, 3}, mask=mask) for mask in range(4)]
+        batch = Batch(set(clauses))
+        assert batch.redundancy == 9
+        assert batch.redundancy + len(batch.clauses) == 13
+
+        ctx = _safe(lambda: build_numpy_context(clauses))
+        circuit = clause_pack([0, 1, 2], list(range(3, 12)), list(range(12, 16)), batch, ctx)
+        clause_depth = clause_oracle(clauses[0]).depth()
+        assert circuit.depth() <= clause_depth + 2 * math.ceil(math.log2(4))
 
     # [LTC §V.C]
     def test__clause_pack__w_register_not_fully_freed_raises(self):
@@ -459,7 +491,7 @@ class TestCstToOracle:
         node = CSTNode(hrse, None)
         node.set_partition([])
         ctx = _safe(lambda: build_numpy_context([_clause({1})]))
-        with pytest.raises(ValueError, match="no allocable ancilla registers"):
+        with pytest.raises(ValueError, match="has no allocable ancilla"):
             cst_to_oracle(1, node, ctx)
 
     def test__cst_to_oracle__simple_single_variable_formula(self):
@@ -500,11 +532,11 @@ class TestCstToOracle:
         def _leaking_node_to_oracle(x_register, scheduler, node, _ctx):
             # Intentionally allocate extra without freeing
             _extra = scheduler.allocate(2)
-            circ = Circuit(len(x_register) + node.size)
+            circ = QuantumCircuit(len(x_register) + node.size)
             out = scheduler.allocate(1)
             return circ, out
 
-        monkeypatch.setattr('compiler.clause_pack.node_to_oracle', _leaking_node_to_oracle)
+        monkeypatch.setattr('cstcompiler.clause_pack.node_to_oracle', _leaking_node_to_oracle)
         with pytest.raises(RuntimeError, match="Failed to fully free"):
             cst_to_oracle(1, root, ctx)
 

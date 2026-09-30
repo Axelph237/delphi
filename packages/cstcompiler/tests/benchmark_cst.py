@@ -10,13 +10,13 @@ from __future__ import annotations
 import time
 import random
 
-from delphi.compiler.cst import (
+from cstcompiler.cst import (
     Clause, Batch,
     build_occurence_list, sort_clauses, grow_block, merge_adjacent,
     grow_cst,
 )
-from delphi.compiler.numpy_context import NumpyContext, build_numpy_context
-from delphi.compiler.hrse import HRSENode
+from cstcompiler.numpy_context import NumpyContext, build_numpy_context
+from cstcompiler.backbone import HRSENode
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ import textwrap
 import instructor
 from dataclasses import dataclass
 
-from delphi.interface.dimacs_cnf import DimacsParseResult, parse_dimacs
+from delphi_interface.dimacs_cnf import DimacsParseResult, parse_dimacs
 
 # ---------------------------------------------------------------------------
 # System prompt

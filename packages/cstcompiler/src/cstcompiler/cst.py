@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 
 import numpy as np
 from typing_extensions import Set
 
 from .bucket_queue import BucketQueue
 from .numpy_context import NumpyContext, build_numpy_context
-from .hrse import HRSENode
+from .backbone import HRSENode
 
 
 # ---------- Type Aliases ----------
@@ -23,11 +23,26 @@ type omap = dict[variable, set[Clause]]
 @dataclass(frozen=True)
 class Clause:
     normed_variables: tuple[variable, ...]  # $\boldsymbol{\hat{C}_i}$
-    variable_polarity_mask: int
+    variable_polarity_mask: int  # bit i set ⇔ normed_variables[i] appears negated
 
     def __init__(self, variables: Set[variable], polarity_mask: int):
         object.__setattr__(self, 'normed_variables', tuple(sorted(variables)))
         object.__setattr__(self, 'variable_polarity_mask', polarity_mask)
+
+    @staticmethod
+    def from_literals(literals: Iterable[int]) -> Clause:
+        """Build a clause from signed DIMACS literals, where -v is the negation of variable v."""
+        negated: dict[variable, bool] = {}
+        for lit in literals:
+            if negated.setdefault(abs(lit), lit < 0) != (lit < 0):
+                raise ValueError(f"Clause contains both {abs(lit)} and -{abs(lit)}, which a Clause cannot represent")
+        variables = sorted(negated)
+        return Clause(set(variables), sum(1 << i for i, v in enumerate(variables) if negated[v]))
+
+    @property
+    def literals(self) -> tuple[int, ...]:
+        """Signed DIMACS literals in variable order, the inverse of `from_literals`."""
+        return tuple(-v if (self.variable_polarity_mask >> i) & 1 else v for i, v in enumerate(self.normed_variables))
 
 
 # [LTC §III.A]
@@ -285,56 +300,27 @@ def grow_block(
 
 # [LTC Alg. 1, line 14]
 def merge_adjacent(partition: list[Batch], budget: int) -> list[Batch]:
-    """Merge consecutive batches whenever the merged batch remains feasible.
+    r"""Merge runs of consecutive batches whenever the merged batch remains feasible.
 
-    Iterates left-to-right; for each head batch, absorbs as many following batches
-    as possible while `occupied_ancilla + merged_redundancy ≤ budget`.
+    Iterates left-to-right; each head absorbs as many following batches as possible
+    while Σ_{h≤j}|β_h| + R(β_j) ≤ budget [LTC Eq. 10]. Absorbed batches are not revisited.
     """
-    if not partition:
-        return []
-
-    prefix = [0] * (len(partition) + 1)
-    for i, b in enumerate(partition):
-        prefix[i + 1] = prefix[i] + len(b._clauses)
-
-    new_partition: list[Batch] = []
-    for i, head_batch in enumerate(partition):
-        occupied = prefix[i]
-
-        if occupied + head_batch.redundancy > budget:
-            new_partition.append(head_batch)
-            continue
-
-        acc_vars = dict(head_batch._variables)
-        acc_clauses = set(head_batch._clauses)
-        acc_redundancy = head_batch.redundancy
-        merged = False
-
-        for j in range(i + 1, len(partition)):
-            b = partition[j]
-            delta = 0
-            for v, c in b._variables.items():
-                existing = acc_vars.get(v, 0)
-                delta += c if existing else (c - 1 if c > 1 else 0)
-            tent_redundancy = acc_redundancy + delta
-            if occupied + tent_redundancy > budget:
+    merged_partition: list[Batch] = []
+    occupied = 0
+    i = 0
+    while i < len(partition):
+        head = partition[i]
+        i += 1
+        while i < len(partition):
+            candidate = Batch._merge(head, partition[i])
+            if occupied + len(candidate._clauses) + candidate.redundancy > budget:
                 break
-            for v, c in b._variables.items():
-                acc_vars[v] = acc_vars.get(v, 0) + c
-            acc_clauses |= b._clauses
-            acc_redundancy = tent_redundancy
-            merged = True
+            head = candidate
+            i += 1
+        merged_partition.append(head)
+        occupied += len(head._clauses)
 
-        if not merged:
-            new_partition.append(head_batch)
-        else:
-            new_batch = object.__new__(Batch)
-            new_batch._variables = acc_vars
-            new_batch._clauses = acc_clauses
-            new_batch.redundancy = acc_redundancy
-            new_partition.append(new_batch)
-
-    return new_partition
+    return merged_partition
 
 
 # [LTC Alg. 1]
@@ -347,17 +333,22 @@ def seed_grow(
     r"""Cluster `leaf_clauses` into a feasible ordered partition Π (Algorithm 1).
 
     `leaf_clauses` are the clauses assigned to node's direct HRSE leaf children —
-    one per leaf, pre-sorted by conflict degree. Budget starts at b ← a_q − m and
+    one per leaf, pre-sorted by conflict degree. Budget starts at b ← a_q(v) − m and
     grows by |β| after each batch (b ← b + |β|), ensuring all clauses are assigned.
+
+    An HRSE node's size includes its own target t_v, and CST-Map evaluates the
+    internal children first, holding their outputs while the clusters run. The
+    budget left for the clusters is therefore a_q(v) = s(v) − 1 − #internal children.
 
     Returns a CSTNode with the partition set, or None if the result is infeasible.
     """
-    if node.size == 0 or node.size < len(leaf_clauses):
+    internal_children = sum(1 for child in node.children if not child.is_leaf())
+    ancilla = node.size - 1 - internal_children
+    if ancilla < len(leaf_clauses):
         return None
 
     m = len(leaf_clauses)
     node_ctx = ctx if ctx is not None else build_numpy_context(leaf_clauses)
-    ancilla = node.size
     remaining = list(leaf_clauses)
     partition: list[Batch] = []
     budget = ancilla - m       # b ← a_q − m
@@ -454,9 +445,9 @@ def _build_cst_subtree(
         if (clause := leaf_clause_map.get(id(child))) is not None
     ]
 
-    cst_node = seed_grow(hrse_node, leaf_clauses, omap, ctx) if leaf_clauses else None
+    cst_node = seed_grow(hrse_node, leaf_clauses, omap, ctx) if leaf_clauses else CSTNode(hrse_node)
     if cst_node is None:
-        cst_node = CSTNode(hrse_node)
+        raise ValueError(f"HRSE node of size {hrse_node.size} cannot fit its {len(leaf_clauses)} leaf clauses.")
     cst_node.parent = parent_cst
 
     child_cst_nodes: list[CSTNode] = []

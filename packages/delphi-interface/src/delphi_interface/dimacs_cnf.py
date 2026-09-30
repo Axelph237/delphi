@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Set
-from delphi.compiler.cst import Clause
+from cstcompiler.cst import Clause
 
 # ---------------------------------------------------------------------------
 # Types
@@ -76,12 +75,8 @@ def parse_dimacs(f) -> DimacsParseResult:
             raise ValueError(f'Clause line not terminated by 0: {line!r}')
         literals = literals[:-1]  # drop the terminating 0
 
-        if not literals:
-            # Empty clause — unsatisfiable by definition; represent as empty Clause
-            clauses.append(Clause(set(), 0))
-            continue
-
-        clauses.append(_clause_from_literals(literals))
+        # An empty clause is unsatisfiable by definition and becomes an empty Clause
+        clauses.append(Clause.from_literals(literals))
 
     return DimacsParseResult(
         variable_names=variable_names,
@@ -89,25 +84,6 @@ def parse_dimacs(f) -> DimacsParseResult:
         num_vars=num_vars,
         num_clauses=num_clauses,
     )
-
-
-def _clause_from_literals(literals: list[int]) -> Clause:
-    """Convert a list of signed DIMACS literals into a Clause.
-
-    The polarity mask is built over the *sorted* variable IDs:
-      bit i = 1  ->  normed_variables[i] appears positive in the clause
-      bit i = 0  ->  normed_variables[i] appears negated in the clause
-    """
-    variables: set[variable] = {abs(lit) for lit in literals}
-    polarity: dict[variable, bool] = {abs(lit): lit > 0 for lit in literals}
-
-    sorted_vars = sorted(variables)
-    mask = 0
-    for i, var in enumerate(sorted_vars):
-        if polarity[var]:
-            mask |= (1 << i)
-
-    return Clause(variables, mask)
 
 
 # ---------------------------------------------------------------------------
@@ -135,10 +111,9 @@ def clause_to_named_literals(
     Example: ['x', '~y', '3']
     """
     result = []
-    for i, var in enumerate(clause.normed_variables):
-        positive = bool((clause.variable_polarity_mask >> i) & 1)
-        name = variable_names.get(var, str(var))
-        result.append(name if positive else f'~{name}')
+    for lit in clause.literals:
+        name = variable_names.get(abs(lit), str(abs(lit)))
+        result.append(name if lit > 0 else f'~{name}')
     return result
 
 
@@ -150,7 +125,7 @@ if __name__ == '__main__':
     import sys
 
     if len(sys.argv) < 2:
-        print('Usage: python dimacs_parser.py <path_to_cnf_file>')
+        print('Usage: python -m delphi_interface.dimacs_cnf <path_to_cnf_file>')
         sys.exit(1)
 
     result = parse_dimacs_file(sys.argv[1])

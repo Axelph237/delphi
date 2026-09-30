@@ -1,5 +1,5 @@
-from delphi.compiler.cst import *
-from delphi.compiler.hrse import HRSENode
+from cstcompiler.cst import *
+from cstcompiler.backbone import HRSENode
 
 # [LTC Eq. 11]
 def test__Batch():
@@ -320,8 +320,25 @@ def test__merge_adjacent__budget_not_exhausted():
     b3 = Batch({c3})
 
     result = merge_adjacent([b1, b2, b3], budget=100)
-    assert isinstance(result, list)
-    assert len(result) <= 3
+    assert [b.clauses for b in result] == [frozenset({c1, c2, c3})]
+
+
+# [LTC Eq. 10]
+def test__merge_adjacent__every_prefix_stays_feasible():
+    import random
+    rng = random.Random(0)
+    clauses = list(dict.fromkeys(Clause(frozenset(rng.sample(range(1, 9), 3)), 0) for _ in range(20)))
+    partition = [Batch({c}) for c in clauses]
+    budget = 30
+
+    result = merge_adjacent(partition, budget)
+    merged_clauses = [c for b in result for c in b.clauses]
+    assert len(merged_clauses) == len(clauses)
+    assert set(merged_clauses) == set(clauses)
+    occupied = 0
+    for batch in result:
+        occupied += len(batch.clauses)
+        assert occupied + batch.redundancy <= budget
 
 
 # ---------- grow_cst ----------
@@ -783,7 +800,7 @@ def test__merge_adjacent__budget_prevents_merge_with_redundancy():
 def test__build_cst_subtree__unmapped_leaf_returns_none():
     # When _build_cst_subtree is called on a leaf HRSENode that has no entry
     # in leaf_clause_map, it returns None (line 429 in cst.py).
-    from delphi.compiler.cst import _build_cst_subtree
+    from cstcompiler.cst import _build_cst_subtree
     leaf = HRSENode(2, 0, None)  # size=2 → leaf (no children)
     result = _build_cst_subtree(leaf, None, {}, {}, None)
     assert result is None

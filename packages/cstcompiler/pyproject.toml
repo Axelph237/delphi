@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cstcompiler"
+version = "0.1.0"
+description = "HRSE tree synthesis and CST construction for SAT-oracle compilation"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy",
+    "qiskit",
+    "typing_extensions",
+]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
