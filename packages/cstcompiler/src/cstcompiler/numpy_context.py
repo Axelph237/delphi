@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, NamedTuple
 import numpy as np
 
 if TYPE_CHECKING:
-    from .cst import Clause, variable
+    from .synthesis import Clause, variable
 
 
 class NumpyContext(NamedTuple):

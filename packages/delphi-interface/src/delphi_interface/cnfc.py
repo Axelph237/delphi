@@ -1,5 +1,5 @@
 from collections.abc import Generator
-from cstcompiler.cst import Clause
+from cstcompiler.synthesis import Clause
 
 from typing import TYPE_CHECKING
 

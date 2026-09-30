@@ -36,7 +36,7 @@ from qiskit.synthesis import synth_mcx_2_clean_kg24, synth_mcx_2_dirty_kg24
 from qiskit.transpiler.passes import HLSConfig
 
 from cstcompiler.clause_pack import cst_to_oracle
-from cstcompiler.cst import grow_cst
+from cstcompiler.synthesis import grow_cst
 from cstcompiler.backbone import HRSENode
 from cstcompiler.numpy_context import build_numpy_context
 from tests.utils import random_kcnf

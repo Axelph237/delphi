@@ -5,7 +5,7 @@ import random
 import pytest
 
 from cstcompiler.clause_pack import cst_to_oracle
-from cstcompiler.cst import grow_cst
+from cstcompiler.synthesis import grow_cst
 from cstcompiler.backbone import HRSENode, max_covered_leaves
 from cstcompiler.numpy_context import build_numpy_context
 

@@ -5,7 +5,7 @@ import random
 from qiskit import QuantumCircuit
 from qiskit.circuit import ControlledGate
 
-from cstcompiler.cst import Clause
+from cstcompiler.synthesis import Clause
 
 
 def print_tree(root, details: str = "", recurse_symbol="children", indent=0):

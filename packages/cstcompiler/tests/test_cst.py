@@ -1,4 +1,4 @@
-from cstcompiler.cst import *
+from cstcompiler.synthesis import *
 from cstcompiler.backbone import HRSENode
 
 # [LTC Eq. 11]
@@ -799,8 +799,8 @@ def test__merge_adjacent__budget_prevents_merge_with_redundancy():
 # [LTC §III.D]
 def test__build_cst_subtree__unmapped_leaf_returns_none():
     # When _build_cst_subtree is called on a leaf HRSENode that has no entry
-    # in leaf_clause_map, it returns None (line 429 in cst.py).
-    from cstcompiler.cst import _build_cst_subtree
+    # in leaf_clause_map, it returns None (line 436 in synthesis.py).
+    from cstcompiler.synthesis import _build_cst_subtree
     leaf = HRSENode(2, 0, None)  # size=2 → leaf (no children)
     result = _build_cst_subtree(leaf, None, {}, {}, None)
     assert result is None

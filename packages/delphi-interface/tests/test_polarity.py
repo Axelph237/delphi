@@ -9,7 +9,7 @@ from cnfc import Formula, Not, Or
 from qiskit.quantum_info import Statevector
 
 from cstcompiler.clause_pack import cst_to_oracle
-from cstcompiler.cst import Clause, grow_cst
+from cstcompiler.synthesis import Clause, grow_cst
 from cstcompiler.backbone import HRSENode
 from cstcompiler.numpy_context import build_numpy_context
 from delphi_interface.cnfc import cnfc_clauses

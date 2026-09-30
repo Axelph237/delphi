@@ -10,7 +10,7 @@ from __future__ import annotations
 import time
 import random
 
-from cstcompiler.cst import (
+from cstcompiler.synthesis import (
     Clause, Batch,
     build_occurence_list, sort_clauses, grow_block, merge_adjacent,
     grow_cst,

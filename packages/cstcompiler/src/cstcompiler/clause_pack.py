@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from qiskit import QuantumCircuit
 
-from .cst import CSTNode, Clause, Batch
+from .synthesis import CSTNode, Clause, Batch
 from .numpy_context import NumpyContext
 
 

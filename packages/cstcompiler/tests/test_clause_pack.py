@@ -14,7 +14,7 @@ from cstcompiler.clause_pack import (
     node_to_oracle,
     cst_to_oracle,
 )
-from cstcompiler.cst import Clause, Batch, CSTNode
+from cstcompiler.synthesis import Clause, Batch, CSTNode
 from cstcompiler.backbone import HRSENode
 from cstcompiler.numpy_context import build_numpy_context
 

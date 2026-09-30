@@ -21,7 +21,7 @@ natural language
    CNF clauses
        │  compiler
        ├── HRSE tree synthesis   (hrse.py)
-       ├── CST construction      (cst.py)
+       ├── CST construction      (synthesis.py)
        └── oracle mapping        (clause_pack.py, Qiskit)
 ```
 
@@ -37,7 +37,7 @@ from cstcompiler.hrse import HRSENode
 root = HRSENode.new(m=10, k=6)  # tree for 10 clauses, 6 ancilla qubits
 ```
 
-### CST (`packages/cstcompiler/src/cstcompiler/cst.py`)
+### CST (`packages/cstcompiler/src/cstcompiler/synthesis.py`)
 
 A **Clustered Synthesis Tree (CST)** mirrors the HRSE tree and assigns a *partition* of clause batches to each node. Batches are built greedily by the **SeedGrow heuristic**:
 
@@ -95,7 +95,7 @@ uv run python -m tests.benchmark_oracle
 
 ```python
 from cstcompiler.hrse import HRSENode
-from cstcompiler.cst import Clause, grow_cst
+from cstcompiler.synthesis import Clause, grow_cst
 
 root = HRSENode.new(m=10, k=6)
 clauses = [Clause(frozenset(vars)) for vars in [...]]  # your CNF clauses

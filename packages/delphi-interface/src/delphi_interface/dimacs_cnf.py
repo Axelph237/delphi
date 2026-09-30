@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from cstcompiler.cst import Clause
+from cstcompiler.synthesis import Clause
 
 # ---------------------------------------------------------------------------
 # Types
