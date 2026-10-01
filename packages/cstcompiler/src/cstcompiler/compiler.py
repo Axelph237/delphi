@@ -19,11 +19,30 @@ class VariableMapping:
     variable_names: dict[int, str] = field(factory=dict)
     next_var_id: int = field(default=1)  # literals are signed, so id 0 could never be negated
 
-    def add(self, var: str):
+    def add(self, var: str) -> int:
+        """Return `var`'s id, assigning the next free one if it is new."""
+        if var in self.variable_ids:
+            return self.variable_ids[var]
+
         var_id = self.next_var_id
         self.next_var_id += 1
         self.variable_ids[var] = var_id
         self.variable_names[var_id] = var
+        return var_id
+
+    def declare(self, var: str, var_id: int):
+        """Bind an id assigned elsewhere, evicting any stale pairing so both dicts stay inverses."""
+        if var_id < 1:
+            raise ValueError(f"Variable id must be positive, got {var_id}")
+
+        if var in self.variable_ids:
+            del self.variable_names[self.variable_ids[var]]
+        if var_id in self.variable_names:
+            del self.variable_ids[self.variable_names[var_id]]
+
+        self.variable_ids[var] = var_id
+        self.variable_names[var_id] = var
+        self.next_var_id = max(self.next_var_id, var_id + 1)
 
     def remove(self, key: str | int):
         var: str
@@ -34,7 +53,10 @@ class VariableMapping:
         else:
             var_id = key
             var = self.variable_names[key]
-        
+
+        if self.variable_ids.get(var) != var_id or self.variable_names.get(var_id) != var:
+            raise KeyError(f"{key!r} does not name a consistent id pair")
+
         del self.variable_names[var_id]
         del self.variable_ids[var]
 
@@ -67,20 +89,22 @@ class CST:
         )
 
     @staticmethod
-    def from_named_literals(clauses: Iterable[Iterable[str]], ancilla_budget: int) -> CST:
-        """Takes an iterable of string iterables. Named literals starting with ~/- are considered negated."""
+    def from_named_literals(clauses: Iterable[Iterable[str | int]], ancilla_budget: int) -> CST:
+        """Takes an iterable of literal iterables. Each leading ~/- is a negation, so they cancel in pairs.
+
+        Non-string literals are rendered as strings first, so the integer -1 reads
+        as the negation of the variable named "1".
+        """
 
         var_map = VariableMapping()
         clause_lst: list[Clause] = []
 
-        def numeric_lits(named_lits: Iterable[str]) -> Generator[int]:
+        def numeric_lits(named_lits: Iterable[str | int]) -> Generator[int]:
             for nl in named_lits:
-                negated = nl.startswith(("~", "-"))
-                name = nl[1:] if negated else nl
-                if name not in var_map.variable_ids:
-                    var_map.add(name)
-                var_id = var_map.variable_ids[name]
-                yield -var_id if negated else var_id
+                text = nl if isinstance(nl, str) else str(nl)
+                name = text.lstrip("~-")
+                var_id = var_map.add(name)
+                yield -var_id if (len(text) - len(name)) % 2 else var_id
 
         for var_set in clauses:
             clause = Clause.from_literals(numeric_lits(var_set))
@@ -93,7 +117,7 @@ class CST:
     def from_Clauses(clauses: list[Clause], ancilla_budget: int, var_map = None) -> CST:
         hrse_root = asdt(len(clauses), ancilla_budget)
         if hrse_root is None:
-            raise RuntimeError("Cannot implement CST: bad given clauses and busget.")
+            raise RuntimeError("Cannot implement CST: bad given clauses and budget.")
 
         grow_result = grow_cst(hrse_root, clauses)
         if grow_result is None:
@@ -134,8 +158,7 @@ def clauses_from_dimacs(source: str | TextIO, var_map: Optional[VariableMapping]
             match = _COMMENT_VAR_RE.match(line)
             if match:
                 vid, name = match.groups()
-                var_map.variable_ids[name] = int(vid)
-                var_map.variable_names[int(vid)] = name
+                var_map.declare(name, int(vid))
             continue
 
         # Header line: "p cnf <num_vars> <num_clauses>"
@@ -155,6 +178,10 @@ def clauses_from_dimacs(source: str | TextIO, var_map: Optional[VariableMapping]
         if literals[-1] != 0:
             raise ValueError(f'Clause line not terminated by 0: {line!r}')
         literals = literals[:-1]  # drop the terminating 0
+
+        # 0 is the terminator, and a signed literal could not negate variable 0 anyway
+        if 0 in literals:
+            raise ValueError(f'Clause line contains 0 before its terminator: {line!r}')
 
         # An empty clause is unsatisfiable by definition and becomes an empty Clause
         clauses.append(Clause.from_literals(literals))

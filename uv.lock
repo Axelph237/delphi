@@ -607,6 +607,7 @@ name = "cstcompiler"
 version = "0.1.0"
 source = { editable = "packages/cstcompiler" }
 dependencies = [
+    { name = "attrs" },
     { name = "numpy" },
     { name = "qiskit" },
     { name = "typing-extensions" },
@@ -619,6 +620,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "attrs" },
     { name = "numpy" },
     { name = "qiskit" },
     { name = "typing-extensions" },

@@ -78,14 +78,72 @@ class TestVariableMappingAdd:
         assert 0 not in vm.variable_names
         assert -vm.variable_ids["only"] < 0
 
-    def test__add__same_name_twice_rebinds_the_name_and_orphans_the_old_id(self):
-        # Current behavior: `add` does not check for an existing name, so the old
-        # id survives in variable_names with no inverse entry.
+    def test__add__is_idempotent_and_returns_the_existing_id(self):
         vm = VariableMapping()
-        vm.add("x")
-        vm.add("x")
+        first = vm.add("x")
+        assert vm.add("x") == first
+        assert vm.variable_ids == {"x": 1}
+        assert vm.variable_names == {1: "x"}
+        assert vm.next_var_id == 2
+
+    def test__add__returns_each_newly_assigned_id(self):
+        vm = VariableMapping()
+        assert [vm.add("a"), vm.add("b")] == [1, 2]
+
+
+class TestVariableMappingDeclare:
+    def test__declare__binds_an_externally_assigned_id(self):
+        vm = VariableMapping()
+        vm.declare("x", 7)
+        assert vm.variable_ids == {"x": 7}
+        assert vm.variable_names == {7: "x"}
+
+    def test__declare__advances_the_counter_past_the_declared_id(self):
+        vm = VariableMapping()
+        vm.declare("x", 7)
+        assert vm.next_var_id == 8
+        assert vm.add("later") == 8
+
+    def test__declare__does_not_lower_the_counter(self):
+        vm = VariableMapping()
+        vm.add("a")
+        vm.add("b")
+        vm.declare("x", 1)
+        assert vm.next_var_id == 3
+
+    def test__declare__rebinding_a_name_evicts_its_old_id(self):
+        vm = VariableMapping()
+        vm.declare("x", 1)
+        vm.declare("x", 2)
         assert vm.variable_ids == {"x": 2}
-        assert vm.variable_names == {1: "x", 2: "x"}
+        assert vm.variable_names == {2: "x"}
+
+    def test__declare__rebinding_an_id_evicts_its_old_name(self):
+        vm = VariableMapping()
+        vm.declare("x", 1)
+        vm.declare("y", 1)
+        assert vm.variable_ids == {"y": 1}
+        assert vm.variable_names == {1: "y"}
+
+    def test__declare__redeclaring_an_identical_pair_is_a_no_op(self):
+        vm = VariableMapping()
+        vm.declare("x", 3)
+        vm.declare("x", 3)
+        assert vm.variable_ids == {"x": 3}
+        assert vm.variable_names == {3: "x"}
+
+    def test__declare__swapping_two_bound_names_leaves_no_stale_entry(self):
+        vm = VariableMapping()
+        vm.declare("x", 1)
+        vm.declare("y", 2)
+        vm.declare("y", 1)
+        assert vm.variable_ids == {"y": 1}
+        assert vm.variable_names == {1: "y"}
+
+    @pytest.mark.parametrize("var_id", [0, -1])
+    def test__declare__rejects_an_id_a_signed_literal_cannot_negate(self, var_id):
+        with pytest.raises(ValueError, match="must be positive"):
+            VariableMapping().declare("x", var_id)
 
 
 class TestVariableMappingRemove:
@@ -147,24 +205,17 @@ class TestVariableMappingRemove:
         vm.add("")
         assert vm.variable_ids == {"": 1}
 
-    def test__remove__by_name_after_a_rebind_leaves_the_orphaned_id(self):
-        # The name resolves to the newer id, so the older id survives with no inverse.
-        vm = VariableMapping()
-        vm.add("x")
-        vm.add("x")
-        vm.remove("x")
-        assert vm.variable_ids == {}
-        assert vm.variable_names == {1: "x"}
+    def test__remove__by_name_rejects_a_mapping_whose_halves_disagree(self):
+        vm = VariableMapping({"x": 2}, {1: "x"}, 3)
+        with pytest.raises(KeyError, match="consistent id pair"):
+            vm.remove("x")
+        assert vm.variable_ids == {"x": 2} and vm.variable_names == {1: "x"}
 
-    def test__remove__by_stale_id_drops_the_live_inverse_entry(self):
-        # After a rebind the name resolves to the newer id, so removing the older
-        # id deletes the surviving name entry and leaves the newer id inverse-less.
-        vm = VariableMapping()
-        vm.add("x")
-        vm.add("x")
-        vm.remove(1)
-        assert vm.variable_ids == {}
-        assert vm.variable_names == {2: "x"}
+    def test__remove__by_id_rejects_a_mapping_whose_halves_disagree(self):
+        vm = VariableMapping({"x": 2}, {1: "x"}, 3)
+        with pytest.raises(KeyError, match="consistent id pair"):
+            vm.remove(1)
+        assert vm.variable_ids == {"x": 2} and vm.variable_names == {1: "x"}
 
 
 # ---------- clauses_from_dimacs ----------
@@ -203,10 +254,10 @@ class TestClausesFromDimacsComments:
         clauses_from_dimacs("p cnf 1 1\n1 0\nc var 1 : late\n", vm)
         assert vm.variable_names == {1: "late"}
 
-    def test__clauses_from_dimacs__records_a_zero_variable_id_verbatim(self):
-        vm = VariableMapping()
-        clauses_from_dimacs("c var 0 : zero\np cnf 1 1\n1 0\n", vm)
-        assert vm.variable_names == {0: "zero"}
+    @pytest.mark.parametrize("vid", ["0", "00"])
+    def test__clauses_from_dimacs__rejects_a_non_positive_declared_id(self, vid):
+        with pytest.raises(ValueError, match="must be positive"):
+            clauses_from_dimacs(f"c var {vid} : zero\np cnf 1 1\n1 0\n")
 
     def test__clauses_from_dimacs__leaves_undeclared_variables_out_of_the_mapping(self):
         vm = VariableMapping()
@@ -251,34 +302,31 @@ class TestClausesFromDimacsClauses:
     def test__clauses_from_dimacs__accepts_an_explicit_plus_sign(self):
         assert clauses_from_dimacs("p cnf 1 1\n+1 0\n") == _clauses((1,))
 
-    def test__clauses_from_dimacs__reads_negative_zero_as_variable_zero(self):
-        # -0 == 0, so the sign is lost and the literal lands on variable 0.
-        assert clauses_from_dimacs("p cnf 1 1\n-0 0\n") == [Clause({0}, 0)]
+    @pytest.mark.parametrize("body", ["-0 0", "0 1 0", "1 0 2 0"])
+    def test__clauses_from_dimacs__rejects_a_zero_before_the_terminator(self, body):
+        with pytest.raises(ValueError, match="contains 0 before its terminator"):
+            clauses_from_dimacs(f"p cnf 2 1\n{body}\n")
 
-    def test__clauses_from_dimacs__does_not_advance_the_id_counter(self):
-        # Declarations are written straight into both dicts, so next_var_id still
-        # points at 1 and a later add() hands out an id DIMACS already claimed.
+    def test__clauses_from_dimacs__advances_the_id_counter_past_declared_ids(self):
         vm = VariableMapping()
-        clauses_from_dimacs("c var 1 : x\nc var 2 : y\np cnf 2 1\n1 2 0\n", vm)
-        assert vm.next_var_id == 1
+        clauses_from_dimacs("c var 1 : x\nc var 5 : y\np cnf 5 1\n1 5 0\n", vm)
+        assert vm.next_var_id == 6
 
-        vm.add("fresh")
-        assert vm.variable_ids == {"x": 1, "y": 2, "fresh": 1}
-        assert vm.variable_names == {1: "fresh", 2: "y"}
+        assert vm.add("fresh") == 6
+        assert vm.variable_ids == {"x": 1, "y": 5, "fresh": 6}
+        assert vm.variable_names == {1: "x", 5: "y", 6: "fresh"}
 
-    def test__clauses_from_dimacs__one_id_declared_with_two_names_keeps_the_last(self):
+    def test__clauses_from_dimacs__one_id_declared_with_two_names_keeps_only_the_last(self):
         vm = VariableMapping()
         clauses_from_dimacs("c var 1 : x\nc var 1 : y\np cnf 1 1\n1 0\n", vm)
-        assert vm.variable_ids == {"x": 1, "y": 1}
+        assert vm.variable_ids == {"y": 1}
         assert vm.variable_names == {1: "y"}
 
-    def test__clauses_from_dimacs__one_name_declared_at_two_ids_keeps_the_last(self):
-        # variable_ids holds one entry while variable_names keeps both, so the
-        # mapping is no longer a bijection.
+    def test__clauses_from_dimacs__one_name_declared_at_two_ids_keeps_only_the_last(self):
         vm = VariableMapping()
         clauses_from_dimacs("c var 1 : x\nc var 2 : x\np cnf 2 1\n1 0\n", vm)
         assert vm.variable_ids == {"x": 2}
-        assert vm.variable_names == {1: "x", 2: "x"}
+        assert vm.variable_names == {2: "x"}
 
 
 class TestClausesFromDimacsErrors:
@@ -371,11 +419,25 @@ class TestFromNamedLiterals:
         with pytest.raises(ValueError, match="Cannot implement more than"):
             CST.from_named_literals([["a"], ["b"], ["c"], ["d"], ["e"]], ancilla_budget=2)
 
-    @pytest.mark.parametrize("name", ["~~x", "--x", "-~x"])
-    def test__from_named_literals__strips_only_the_outermost_prefix(self, name):
-        cst = CST.from_named_literals([[name, "y"]], ancilla_budget=8)
+    @pytest.mark.parametrize(
+        "name,sign",
+        [("x", 1), ("~x", -1), ("-x", -1),
+         ("~~x", 1), ("--x", 1), ("-~x", 1), ("~-x", 1),
+         ("~~~x", -1), ("~~~~x", 1), ("~-~-x", 1), ("~~~~~x", -1)],
+    )
+    def test__from_named_literals__leading_negations_cancel_in_pairs(self, name, sign):
+        cst = CST.from_named_literals([[name]], ancilla_budget=8)
         assert cst.variable_mapping is not None
-        assert set(cst.variable_mapping.variable_ids) == {name[1:], "y"}
+        assert cst.variable_mapping.variable_ids == {"x": 1}
+        [clause] = [c for batch in cst.root.partition for c in batch.clauses]
+        assert clause.literals == (sign,)
+
+    def test__from_named_literals__a_doubled_bare_prefix_is_the_positive_empty_name(self):
+        cst = CST.from_named_literals([["~~"]], ancilla_budget=8)
+        assert cst.variable_mapping is not None
+        assert cst.variable_mapping.variable_ids == {"": 1}
+        [clause] = [c for batch in cst.root.partition for c in batch.clauses]
+        assert clause.literals == (1,)
 
     @pytest.mark.parametrize("name", ["a-b", "a~b", "x-"])
     def test__from_named_literals__only_a_leading_prefix_negates(self, name):
@@ -395,9 +457,22 @@ class TestFromNamedLiterals:
         assert cst.variable_mapping.variable_ids == {}
         assert cst.ctx.n_vars == 0
 
-    def test__from_named_literals__non_string_literal_raises(self):
-        with pytest.raises(AttributeError, match="startswith"):
-            CST.from_named_literals([[1, 2]], ancilla_budget=8)  # type: ignore[list-item]
+    def test__from_named_literals__renders_integer_literals_as_names(self):
+        cst = CST.from_named_literals([[1, -2]], ancilla_budget=8)
+        assert cst.variable_mapping is not None
+        assert cst.variable_mapping.variable_ids == {"1": 1, "2": 2}
+        [clause] = [c for batch in cst.root.partition for c in batch.clauses]
+        assert clause.literals == (1, -2)
+
+    def test__from_named_literals__an_integer_and_its_string_are_the_same_variable(self):
+        cst = CST.from_named_literals([[1, "y"], ["-1"]], ancilla_budget=8)
+        assert cst.variable_mapping is not None
+        assert cst.variable_mapping.variable_ids == {"1": 1, "y": 2}
+
+    def test__from_named_literals__renders_other_objects_through_str(self):
+        cst = CST.from_named_literals([[None, 1.5]], ancilla_budget=8)  # type: ignore[list-item]
+        assert cst.variable_mapping is not None
+        assert set(cst.variable_mapping.variable_ids) == {"None", "1.5"}
 
 
 # ---------- CST.from_dimacs ----------

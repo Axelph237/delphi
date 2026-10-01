@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "HRSE tree synthesis and CST construction for SAT-oracle compilation"
 requires-python = ">=3.12"
 dependencies = [
+    "attrs",
     "numpy",
     "qiskit",
     "typing_extensions",
